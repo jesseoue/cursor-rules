@@ -1,0 +1,688 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+rule_type: auto_attached
+title: Tinybird Analytics Rules
+description: Real-time analytics and data pipeline patterns with Tinybird
+patterns: ["**/*.pipe", "**/tinybird/**/*.{ts,js}", "**/pipes/**/*.sql", "**/*tinybird*"]
+---
+
+# Tinybird Analytics Rules
+
+## Setup & Configuration
+
+### Project Setup
+```bash
+# Install Tinybird CLI
+pip install tinybird-cli
+
+# Initialize project
+tb init
+
+# Authenticate
+tb auth
+
+# Deploy pipes and data sources
+tb push
+```
+
+### Environment Configuration
+```bash
+# .env
+TB_API_URL=https://api.tinybird.co
+TB_TOKEN=p.ey...
+TB_HOST=api.tinybird.co
+TB_LOCAL=false
+```
+
+## Data Sources
+
+### CSV Data Source
+```sql
+-- datasources/events.datasource
+SCHEMA >
+    `timestamp` DateTime,
+    `event_name` String,
+    `user_id` String,
+    `properties` String
+
+ENGINE "MergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(timestamp)"
+ENGINE_SORTING_KEY "timestamp, user_id"
+```
+
+### Real-time Data Source (Kafka)
+```sql
+-- datasources/events_streaming.datasource
+SCHEMA >
+    `timestamp` DateTime,
+    `event_name` String,
+    `user_id` String,
+    `properties` String
+
+ENGINE "MergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(timestamp)"
+ENGINE_SORTING_KEY "timestamp, user_id"
+
+IMPORT_SERVICE kafka
+IMPORT_CONNECTION_NAME my_kafka
+IMPORT_TOPIC events
+IMPORT_STRATEGY append
+```
+
+### API Data Source
+```sql
+-- datasources/web_analytics.datasource
+SCHEMA >
+    `timestamp` DateTime,
+    `page_url` String,
+    `referrer` String,
+    `user_agent` String,
+    `session_id` String
+
+ENGINE "MergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(timestamp)"
+ENGINE_SORTING_KEY "timestamp, session_id"
+
+IMPORT_SERVICE webhook
+IMPORT_STRATEGY append
+```
+
+## Pipes (SQL Queries)
+
+### Basic Analytics Pipe
+```sql
+-- pipes/daily_page_views.pipe
+DESCRIPTION >
+    Daily page views aggregated by page
+
+TOKEN "page_views_token"
+
+NODE daily_aggregation
+SQL >
+    SELECT 
+        toDate(timestamp) as date,
+        page_url,
+        count() as page_views,
+        uniq(session_id) as unique_visitors
+    FROM web_analytics
+    WHERE timestamp >= now() - interval 30 day
+    GROUP BY date, page_url
+    ORDER BY date DESC, page_views DESC
+
+TYPE materialized
+DATASOURCE daily_page_views_mv
+```
+
+### Real-time Pipe
+```sql
+-- pipes/real_time_events.pipe
+DESCRIPTION >
+    Real-time event stream for dashboard
+
+TOKEN "real_time_token"
+
+NODE recent_events
+SQL >
+    SELECT 
+        timestamp,
+        event_name,
+        user_id,
+        JSONExtractString(properties, 'source') as source
+    FROM events
+    WHERE timestamp >= now() - interval 1 hour
+    ORDER BY timestamp DESC
+    LIMIT 1000
+```
+
+### Parameterized Pipe
+```sql
+-- pipes/user_analytics.pipe
+DESCRIPTION >
+    User-specific analytics with parameters
+
+TOKEN "user_analytics_token"
+
+NODE user_events
+SQL >
+    SELECT 
+        toDate(timestamp) as date,
+        event_name,
+        count() as event_count
+    FROM events
+    WHERE user_id = {{ String(user_id, 'default_user') }}
+        AND timestamp >= {{ DateTime(start_date, '2024-01-01') }}
+        AND timestamp <= {{ DateTime(end_date, now()) }}
+    GROUP BY date, event_name
+    ORDER BY date DESC, event_count DESC
+```
+
+## TypeScript Integration
+
+### Tinybird Client Setup
+```typescript
+// lib/tinybird.ts
+import { z } from 'zod'
+
+const TINYBIRD_API_URL = process.env.TB_API_URL || 'https://api.tinybird.co'
+const TINYBIRD_TOKEN = process.env.TB_TOKEN
+
+if (!TINYBIRD_TOKEN) {
+  throw new Error('TB_TOKEN is required')
+}
+
+class TinybirdClient {
+  private baseUrl: string
+  private token: string
+
+  constructor(token: string, baseUrl: string = TINYBIRD_API_URL) {
+    this.token = token
+    this.baseUrl = baseUrl
+  }
+
+  async query<T>(pipe: string, params: Record<string, any> = {}): Promise<T> {
+    const url = new URL(`/v0/pipes/${pipe}.json`, this.baseUrl)
+    
+    // Add parameters to URL
+    Object.entries(params).forEach(([key, value]) => {
+      url.searchParams.append(key, String(value))
+    })
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Tinybird API error: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return data
+  }
+
+  async ingest(datasource: string, data: Record<string, any>[]): Promise<void> {
+    const url = new URL(`/v0/events`, this.baseUrl)
+    url.searchParams.append('name', datasource)
+
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Tinybird ingest error: ${response.statusText}`)
+    }
+  }
+}
+
+export const tinybird = new TinybirdClient(TINYBIRD_TOKEN)
+```
+
+### Data Validation Schemas
+```typescript
+// lib/schemas.ts
+import { z } from 'zod'
+
+export const PageViewEventSchema = z.object({
+  timestamp: z.string().datetime(),
+  page_url: z.string().url(),
+  referrer: z.string().optional(),
+  user_agent: z.string(),
+  session_id: z.string(),
+})
+
+export const CustomEventSchema = z.object({
+  timestamp: z.string().datetime(),
+  event_name: z.string(),
+  user_id: z.string(),
+  properties: z.record(z.any()),
+})
+
+export const DailyPageViewsSchema = z.object({
+  date: z.string(),
+  page_url: z.string(),
+  page_views: z.number(),
+  unique_visitors: z.number(),
+})
+
+export type PageViewEvent = z.infer<typeof PageViewEventSchema>
+export type CustomEvent = z.infer<typeof CustomEventSchema>
+export type DailyPageViews = z.infer<typeof DailyPageViewsSchema>
+```
+
+### React Hooks
+```typescript
+// hooks/use-analytics.ts
+import { useQuery } from '@tanstack/react-query'
+import { tinybird } from '@/lib/tinybird'
+import { DailyPageViewsSchema } from '@/lib/schemas'
+
+export function usePageViews(days: number = 30) {
+  return useQuery({
+    queryKey: ['page-views', days],
+    queryFn: async () => {
+      const data = await tinybird.query('daily_page_views', {
+        days: days.toString(),
+      })
+      
+      return DailyPageViewsSchema.array().parse(data.data)
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+}
+
+export function useRealTimeEvents() {
+  return useQuery({
+    queryKey: ['real-time-events'],
+    queryFn: async () => {
+      const data = await tinybird.query('real_time_events')
+      return data.data
+    },
+    refetchInterval: 10000, // Refetch every 10 seconds
+  })
+}
+
+export function useUserAnalytics(userId: string, startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ['user-analytics', userId, startDate, endDate],
+    queryFn: async () => {
+      const data = await tinybird.query('user_analytics', {
+        user_id: userId,
+        start_date: startDate,
+        end_date: endDate,
+      })
+      return data.data
+    },
+    enabled: !!userId,
+  })
+}
+```
+
+### Event Tracking
+```typescript
+// lib/analytics.ts
+import { tinybird } from '@/lib/tinybird'
+import { PageViewEventSchema, CustomEventSchema } from '@/lib/schemas'
+
+export class Analytics {
+  static async trackPageView(data: {
+    page_url: string
+    referrer?: string
+    user_agent: string
+    session_id: string
+  }) {
+    const event = PageViewEventSchema.parse({
+      timestamp: new Date().toISOString(),
+      ...data,
+    })
+
+    try {
+      await tinybird.ingest('web_analytics', [event])
+    } catch (error) {
+      console.error('Failed to track page view:', error)
+    }
+  }
+
+  static async trackEvent(data: {
+    event_name: string
+    user_id: string
+    properties?: Record<string, any>
+  }) {
+    const event = CustomEventSchema.parse({
+      timestamp: new Date().toISOString(),
+      properties: data.properties || {},
+      ...data,
+    })
+
+    try {
+      await tinybird.ingest('events', [event])
+    } catch (error) {
+      console.error('Failed to track event:', error)
+    }
+  }
+
+  static async batchTrackEvents(events: Array<{
+    event_name: string
+    user_id: string
+    properties?: Record<string, any>
+    timestamp?: string
+  }>) {
+    const validatedEvents = events.map(event => 
+      CustomEventSchema.parse({
+        timestamp: event.timestamp || new Date().toISOString(),
+        properties: event.properties || {},
+        ...event,
+      })
+    )
+
+    try {
+      await tinybird.ingest('events', validatedEvents)
+    } catch (error) {
+      console.error('Failed to batch track events:', error)
+    }
+  }
+}
+```
+
+## Next.js API Routes
+
+### Analytics API
+```typescript
+// app/api/analytics/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { tinybird } from '@/lib/tinybird'
+import { z } from 'zod'
+
+const QueryParamsSchema = z.object({
+  pipe: z.string(),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+  user_id: z.string().optional(),
+  limit: z.string().transform(Number).optional(),
+})
+
+export async function GET(request: NextRequest) {
+  try {
+    const url = new URL(request.url)
+    const params = Object.fromEntries(url.searchParams)
+    const validatedParams = QueryParamsSchema.parse(params)
+
+    const { pipe, ...queryParams } = validatedParams
+
+    const data = await tinybird.query(pipe, queryParams)
+    
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Analytics API error:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch analytics data' },
+      { status: 500 }
+    )
+  }
+}
+```
+
+### Event Ingestion API
+```typescript
+// app/api/events/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { Analytics } from '@/lib/analytics'
+import { CustomEventSchema } from '@/lib/schemas'
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    
+    // Single event
+    if (!Array.isArray(body)) {
+      const event = CustomEventSchema.parse(body)
+      await Analytics.trackEvent(event)
+      return NextResponse.json({ success: true })
+    }
+    
+    // Batch events
+    const events = body.map(event => CustomEventSchema.parse(event))
+    await Analytics.batchTrackEvents(events)
+    
+    return NextResponse.json({ 
+      success: true, 
+      processed: events.length 
+    })
+  } catch (error) {
+    console.error('Event ingestion error:', error)
+    return NextResponse.json(
+      { error: 'Failed to ingest events' },
+      { status: 400 }
+    )
+  }
+}
+```
+
+## Dashboard Components
+
+### Analytics Dashboard
+```typescript
+// components/analytics-dashboard.tsx
+import { usePageViews, useRealTimeEvents } from '@/hooks/use-analytics'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+
+export function AnalyticsDashboard() {
+  const { data: pageViews, isLoading: pageViewsLoading } = usePageViews(30)
+  const { data: realTimeEvents, isLoading: realTimeLoading } = useRealTimeEvents()
+
+  if (pageViewsLoading || realTimeLoading) {
+    return <div>Loading analytics...</div>
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">
+            Total Page Views
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">
+            {pageViews?.reduce((sum, pv) => sum + pv.page_views, 0) || 0}
+          </div>
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">
+            Unique Visitors
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">
+            {pageViews?.reduce((sum, pv) => sum + pv.unique_visitors, 0) || 0}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="col-span-4">
+        <CardHeader>
+          <CardTitle>Page Views Over Time</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={pageViews}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="page_views" stroke="#8884d8" />
+              <Line type="monotone" dataKey="unique_visitors" stroke="#82ca9d" />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="col-span-4">
+        <CardHeader>
+          <CardTitle>Real-time Events</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {realTimeEvents?.map((event: any, index: number) => (
+              <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                <span className="font-medium">{event.event_name}</span>
+                <span className="text-sm text-gray-500">
+                  {new Date(event.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+```
+
+### Custom Analytics Widget
+```typescript
+// components/analytics-widget.tsx
+interface AnalyticsWidgetProps {
+  pipe: string
+  title: string
+  params?: Record<string, any>
+  refreshInterval?: number
+}
+
+export function AnalyticsWidget({ 
+  pipe, 
+  title, 
+  params = {}, 
+  refreshInterval = 60000 
+}: AnalyticsWidgetProps) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['analytics-widget', pipe, params],
+    queryFn: async () => {
+      const data = await tinybird.query(pipe, params)
+      return data.data
+    },
+    refetchInterval: refreshInterval,
+  })
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="text-red-500">Error loading {title}</div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div>Loading...</div>
+        ) : (
+          <div className="text-2xl font-bold">
+            {data?.length || 0}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+```
+
+## Performance Optimization
+
+### Connection Pooling
+```typescript
+// lib/tinybird-pool.ts
+class TinybirdConnectionPool {
+  private connections: TinybirdClient[] = []
+  private maxConnections: number = 10
+  private currentIndex: number = 0
+
+  constructor(tokens: string[], maxConnections: number = 10) {
+    this.maxConnections = Math.min(maxConnections, tokens.length)
+    
+    for (let i = 0; i < this.maxConnections; i++) {
+      this.connections.push(new TinybirdClient(tokens[i % tokens.length]))
+    }
+  }
+
+  getConnection(): TinybirdClient {
+    const connection = this.connections[this.currentIndex]
+    this.currentIndex = (this.currentIndex + 1) % this.connections.length
+    return connection
+  }
+
+  async query<T>(pipe: string, params: Record<string, any> = {}): Promise<T> {
+    const connection = this.getConnection()
+    return connection.query<T>(pipe, params)
+  }
+}
+
+export const tinybirdPool = new TinybirdConnectionPool([
+  process.env.TB_TOKEN!,
+  // Add additional tokens for scaling
+])
+```
+
+### Caching Strategy
+```typescript
+// lib/analytics-cache.ts
+import { Redis } from 'ioredis'
+
+const redis = new Redis(process.env.REDIS_URL)
+
+export class AnalyticsCache {
+  static async getCachedResult<T>(key: string): Promise<T | null> {
+    try {
+      const cached = await redis.get(key)
+      return cached ? JSON.parse(cached) : null
+    } catch {
+      return null
+    }
+  }
+
+  static async setCachedResult<T>(
+    key: string, 
+    data: T, 
+    ttlSeconds: number = 300
+  ): Promise<void> {
+    try {
+      await redis.setex(key, ttlSeconds, JSON.stringify(data))
+    } catch (error) {
+      console.error('Cache set error:', error)
+    }
+  }
+
+  static async queryWithCache<T>(
+    pipe: string,
+    params: Record<string, any> = {},
+    ttlSeconds: number = 300
+  ): Promise<T> {
+    const cacheKey = `analytics:${pipe}:${JSON.stringify(params)}`
+    
+    // Try cache first
+    const cached = await this.getCachedResult<T>(cacheKey)
+    if (cached) return cached
+
+    // Query Tinybird
+    const data = await tinybird.query<T>(pipe, params)
+    
+    // Cache result
+    await this.setCachedResult(cacheKey, data, ttlSeconds)
+    
+    return data
+  }
+}
+```
+
+## Best Practices
+
+1. **Use materialized views for frequently accessed data**
+2. **Implement proper data validation with Zod schemas**
+3. **Cache frequently accessed analytics data**
+4. **Use real-time pipes sparingly to avoid rate limits**
+5. **Implement proper error handling and retry logic**
+6. **Monitor query performance and optimize SQL**
+7. **Use parameterized pipes for flexible analytics**
+8. **Implement proper authentication for sensitive data**
+9. **Use batch ingestion for high-volume events**
+10. **Set up alerts for failed data ingestion**

@@ -1,0 +1,482 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+rule_type: auto_attached
+title: Drizzle ORM Rules
+description: Database schema definitions and query patterns with Drizzle ORM
+patterns: ["**/db/**/*.ts", "**/schema/**/*.ts", "**/drizzle/**/*.ts", "drizzle.config.*"]
+---
+
+# Drizzle ORM Rules
+
+## Schema Definition
+
+### Basic Table Schema
+```typescript
+import { pgTable, uuid, varchar, text, timestamp, integer, boolean } from 'drizzle-orm/pg-core'
+import { relations } from 'drizzle-orm'
+
+export const users = pgTable('users', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  name: varchar('name', { length: 255 }),
+  bio: text('bio'),
+  age: integer('age'),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+})
+
+export const posts = pgTable('posts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  title: varchar('title', { length: 255 }).notNull(),
+  content: text('content'),
+  authorId: uuid('author_id').references(() => users.id),
+  publishedAt: timestamp('published_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+})
+```
+
+### Relationships
+```typescript
+export const usersRelations = relations(users, ({ many }) => ({
+  posts: many(posts),
+  comments: many(comments),
+}))
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  author: one(users, {
+    fields: [posts.authorId],
+    references: [users.id],
+  }),
+  comments: many(comments),
+  tags: many(postsTags),
+}))
+
+export const comments = pgTable('comments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  content: text('content').notNull(),
+  postId: uuid('post_id').references(() => posts.id),
+  authorId: uuid('author_id').references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow(),
+})
+
+export const commentsRelations = relations(comments, ({ one }) => ({
+  post: one(posts, {
+    fields: [comments.postId],
+    references: [posts.id],
+  }),
+  author: one(users, {
+    fields: [comments.authorId],
+    references: [users.id],
+  }),
+}))
+```
+
+### Enums and Indexes
+```typescript
+import { pgEnum, index, uniqueIndex } from 'drizzle-orm/pg-core'
+
+export const roleEnum = pgEnum('role', ['user', 'admin', 'moderator'])
+
+export const users = pgTable('users', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  email: varchar('email', { length: 255 }).notNull(),
+  role: roleEnum('role').default('user'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  emailIdx: uniqueIndex('email_idx').on(table.email),
+  roleIdx: index('role_idx').on(table.role),
+  createdAtIdx: index('created_at_idx').on(table.createdAt),
+}))
+```
+
+## Database Configuration
+
+### Database Setup
+```typescript
+// db/index.ts
+import { drizzle } from 'drizzle-orm/postgres-js'
+import postgres from 'postgres'
+import * as schema from './schema'
+
+const connectionString = process.env.DATABASE_URL!
+
+// Disable prefetch as it is not supported for "Transaction" pool mode
+const client = postgres(connectionString, { prepare: false })
+export const db = drizzle(client, { schema })
+
+// Types
+export type Database = typeof db
+export type UsersTable = typeof schema.users
+export type PostsTable = typeof schema.posts
+```
+
+### Connection Pooling
+```typescript
+import { Pool } from 'pg'
+import { drizzle } from 'drizzle-orm/node-postgres'
+
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  port: parseInt(process.env.DB_PORT || '5432'),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+})
+
+export const db = drizzle(pool, { schema })
+```
+
+## Query Patterns
+
+### Basic CRUD Operations
+```typescript
+import { eq, and, or, like, gt, lt, desc } from 'drizzle-orm'
+
+// Create
+const newUser = await db.insert(users).values({
+  email: 'john@example.com',
+  name: 'John Doe',
+  age: 30,
+}).returning()
+
+// Read
+const user = await db.select().from(users).where(eq(users.id, userId))
+
+const allUsers = await db.select({
+  id: users.id,
+  name: users.name,
+  email: users.email,
+}).from(users)
+
+// Update
+const updatedUser = await db
+  .update(users)
+  .set({ 
+    name: 'Jane Doe',
+    updatedAt: new Date(),
+  })
+  .where(eq(users.id, userId))
+  .returning()
+
+// Delete
+await db.delete(users).where(eq(users.id, userId))
+```
+
+### Advanced Queries
+```typescript
+// Complex WHERE conditions
+const activeUsers = await db
+  .select()
+  .from(users)
+  .where(
+    and(
+      eq(users.isActive, true),
+      gt(users.age, 18),
+      like(users.email, '%@gmail.com')
+    )
+  )
+
+// Join queries
+const usersWithPosts = await db
+  .select({
+    userId: users.id,
+    userName: users.name,
+    postId: posts.id,
+    postTitle: posts.title,
+  })
+  .from(users)
+  .leftJoin(posts, eq(users.id, posts.authorId))
+
+// Aggregation
+import { count, avg, sum } from 'drizzle-orm'
+
+const userStats = await db
+  .select({
+    totalUsers: count(),
+    avgAge: avg(users.age),
+  })
+  .from(users)
+
+// Subqueries
+const usersWithPostCount = await db
+  .select({
+    id: users.id,
+    name: users.name,
+    postCount: sql<number>`(
+      SELECT COUNT(*) 
+      FROM ${posts} 
+      WHERE ${posts.authorId} = ${users.id}
+    )`,
+  })
+  .from(users)
+```
+
+### Pagination
+```typescript
+async function getUsers(page: number = 1, limit: number = 10) {
+  const offset = (page - 1) * limit
+  
+  const [data, total] = await Promise.all([
+    db
+      .select()
+      .from(users)
+      .limit(limit)
+      .offset(offset)
+      .orderBy(desc(users.createdAt)),
+    
+    db
+      .select({ count: count() })
+      .from(users)
+      .then(result => result[0].count)
+  ])
+  
+  return {
+    data,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  }
+}
+```
+
+## Transactions
+
+### Basic Transactions
+```typescript
+await db.transaction(async (tx) => {
+  const user = await tx.insert(users).values({
+    email: 'john@example.com',
+    name: 'John Doe',
+  }).returning()
+
+  await tx.insert(posts).values({
+    title: 'First Post',
+    content: 'Hello World',
+    authorId: user[0].id,
+  })
+})
+```
+
+### Transaction with Error Handling
+```typescript
+import { TransactionRollbackError } from 'drizzle-orm'
+
+async function transferCredits(fromUserId: string, toUserId: string, amount: number) {
+  try {
+    await db.transaction(async (tx) => {
+      // Deduct from sender
+      const sender = await tx
+        .select()
+        .from(users)
+        .where(eq(users.id, fromUserId))
+        .for('update')
+
+      if (sender[0].credits < amount) {
+        throw new Error('Insufficient credits')
+      }
+
+      await tx
+        .update(users)
+        .set({ credits: sender[0].credits - amount })
+        .where(eq(users.id, fromUserId))
+
+      // Add to receiver
+      await tx
+        .update(users)
+        .set({ 
+          credits: sql`${users.credits} + ${amount}`
+        })
+        .where(eq(users.id, toUserId))
+    })
+  } catch (error) {
+    if (error instanceof TransactionRollbackError) {
+      console.error('Transaction rolled back:', error.cause)
+    }
+    throw error
+  }
+}
+```
+
+## Migrations
+
+### Migration Files
+```typescript
+// migrations/0001_create_users.sql
+CREATE TABLE "users" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "email" varchar(255) NOT NULL UNIQUE,
+  "name" varchar(255),
+  "created_at" timestamp DEFAULT now(),
+  "updated_at" timestamp DEFAULT now()
+);
+
+CREATE INDEX "email_idx" ON "users" ("email");
+```
+
+### Drizzle Config
+```typescript
+// drizzle.config.ts
+import type { Config } from 'drizzle-kit'
+
+export default {
+  schema: './src/db/schema.ts',
+  out: './migrations',
+  driver: 'pg',
+  dbCredentials: {
+    connectionString: process.env.DATABASE_URL!,
+  },
+} satisfies Config
+```
+
+### Migration Commands
+```bash
+# Generate migration
+npx drizzle-kit generate:pg
+
+# Run migrations
+npx drizzle-kit push:pg
+
+# Studio
+npx drizzle-kit studio
+```
+
+## Type Safety
+
+### Inferred Types
+```typescript
+import type { InferSelectModel, InferInsertModel } from 'drizzle-orm'
+
+export type User = InferSelectModel<typeof users>
+export type NewUser = InferInsertModel<typeof users>
+
+export type Post = InferSelectModel<typeof posts>
+export type NewPost = InferInsertModel<typeof posts>
+
+// Usage
+function createUser(userData: NewUser): Promise<User> {
+  return db.insert(users).values(userData).returning()
+}
+```
+
+### Custom Types
+```typescript
+// Custom select types
+export type UserWithPosts = User & {
+  posts: Post[]
+}
+
+export type PostWithAuthor = Post & {
+  author: Pick<User, 'id' | 'name' | 'email'>
+}
+
+// Repository pattern
+export class UserRepository {
+  async findById(id: string): Promise<User | null> {
+    const result = await db.select().from(users).where(eq(users.id, id))
+    return result[0] || null
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    const result = await db.select().from(users).where(eq(users.email, email))
+    return result[0] || null
+  }
+
+  async create(userData: NewUser): Promise<User> {
+    const result = await db.insert(users).values(userData).returning()
+    return result[0]
+  }
+
+  async update(id: string, userData: Partial<NewUser>): Promise<User> {
+    const result = await db
+      .update(users)
+      .set({ ...userData, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning()
+    return result[0]
+  }
+
+  async delete(id: string): Promise<void> {
+    await db.delete(users).where(eq(users.id, id))
+  }
+}
+```
+
+## Performance Optimization
+
+### Prepared Statements
+```typescript
+import { placeholder } from 'drizzle-orm'
+
+const getUserById = db
+  .select()
+  .from(users)
+  .where(eq(users.id, placeholder('id')))
+  .prepare()
+
+const updateUserName = db
+  .update(users)
+  .set({ name: placeholder('name') })
+  .where(eq(users.id, placeholder('id')))
+  .prepare()
+
+// Usage
+const user = await getUserById.execute({ id: userId })
+await updateUserName.execute({ id: userId, name: 'New Name' })
+```
+
+### Query Optimization
+```typescript
+// Use select specific fields instead of select all
+const users = await db
+  .select({
+    id: users.id,
+    name: users.name,
+    email: users.email,
+  })
+  .from(users)
+
+// Use exists for boolean checks
+const hasActivePosts = await db
+  .select({ exists: sql`1` })
+  .from(posts)
+  .where(
+    and(
+      eq(posts.authorId, userId),
+      eq(posts.isActive, true)
+    )
+  )
+  .limit(1)
+
+// Batch operations
+const newUsers = await db
+  .insert(users)
+  .values([
+    { email: 'user1@example.com', name: 'User 1' },
+    { email: 'user2@example.com', name: 'User 2' },
+    { email: 'user3@example.com', name: 'User 3' },
+  ])
+  .returning()
+```
+
+## Best Practices
+
+1. **Use TypeScript for complete type safety**
+2. **Define relationships for automatic joins**
+3. **Use prepared statements for repeated queries**
+4. **Implement proper indexing strategy**
+5. **Use transactions for data consistency**
+6. **Validate data before database operations**
+7. **Use connection pooling in production**
+8. **Keep migrations versioned and reversible**
+9. **Use repository pattern for complex business logic**
+10. **Monitor query performance and optimize regularly**

@@ -1,0 +1,719 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+rule_type: agent_requested
+title: Model Context Protocols (MCPs)
+description: Comprehensive guide to available Model Context Protocols for extending AI capabilities with external services and tools
+---
+
+# Model Context Protocols (MCPs)
+
+## Database MCPs
+
+### PostgreSQL MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-postgres
+
+# Configuration
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:pass@localhost/db"]
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Execute SQL queries and retrieve results
+- Schema introspection and table analysis
+- Database administration tasks
+- Data export and migration support
+
+### SQLite MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-sqlite
+
+# Configuration
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sqlite", "/path/to/database.db"]
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Local SQLite database operations
+- Lightweight data analysis
+- Development and testing scenarios
+- Schema design and prototyping
+
+### MySQL MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-mysql
+
+# Configuration
+{
+  "mcpServers": {
+    "mysql": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-mysql", "mysql://user:pass@localhost/db"]
+    }
+  }
+}
+```
+
+**Capabilities:**
+- MySQL database operations
+- Performance optimization queries
+- Replication and clustering support
+- Advanced indexing strategies
+
+## Cloud Service MCPs
+
+### AWS MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-aws
+
+# Configuration
+{
+  "mcpServers": {
+    "aws": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-aws"],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "your-access-key",
+        "AWS_SECRET_ACCESS_KEY": "your-secret-key",
+        "AWS_REGION": "us-west-2"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- EC2 instance management
+- S3 bucket operations
+- Lambda function deployment
+- CloudFormation stack management
+- IAM policy administration
+
+### Google Drive MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-gdrive
+
+# Configuration
+{
+  "mcpServers": {
+    "gdrive": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+      "env": {
+        "GOOGLE_CLIENT_ID": "your-client-id",
+        "GOOGLE_CLIENT_SECRET": "your-client-secret"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- File upload and download
+- Folder organization and sharing
+- Document collaboration features
+- Real-time synchronization
+
+### GitHub MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-github
+
+# Configuration
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-token"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Repository management
+- Issue and PR tracking
+- Code review automation
+- CI/CD pipeline integration
+- Release management
+
+## Development Tools MCPs
+
+### Docker MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-docker
+
+# Configuration
+{
+  "mcpServers": {
+    "docker": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-docker"]
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Container lifecycle management
+- Image building and deployment
+- Network and volume management
+- Docker Compose orchestration
+- Registry operations
+
+### Kubernetes MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-kubernetes
+
+# Configuration
+{
+  "mcpServers": {
+    "kubernetes": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-kubernetes"],
+      "env": {
+        "KUBECONFIG": "/path/to/kubeconfig"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Pod and deployment management
+- Service and ingress configuration
+- ConfigMap and Secret handling
+- Cluster monitoring and scaling
+- Helm chart deployment
+
+### Git MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-git
+
+# Configuration
+{
+  "mcpServers": {
+    "git": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-git", "/path/to/repo"]
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Repository operations (clone, pull, push)
+- Branch and merge management
+- Commit history analysis
+- Tag and release creation
+- Conflict resolution assistance
+
+## Productivity & Collaboration MCPs
+
+### Slack MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-slack
+
+# Configuration
+{
+  "mcpServers": {
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-slack"],
+      "env": {
+        "SLACK_BOT_TOKEN": "xoxb-your-token",
+        "SLACK_APP_TOKEN": "xapp-your-token"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Message sending and management
+- Channel and user operations
+- File sharing and reactions
+- Workflow automation
+- Bot interaction management
+
+### Notion MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-notion
+
+# Configuration
+{
+  "mcpServers": {
+    "notion": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-notion"],
+      "env": {
+        "NOTION_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Page and database operations
+- Block content manipulation
+- Property and relation management
+- Template creation and sharing
+- Integration with other services
+
+### Linear MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-linear
+
+# Configuration
+{
+  "mcpServers": {
+    "linear": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-linear"],
+      "env": {
+        "LINEAR_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Issue creation and management
+- Project and milestone tracking
+- Team and user administration
+- Workflow and state management
+- Reporting and analytics
+
+## Web Automation MCPs
+
+### Puppeteer MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-puppeteer
+
+# Configuration
+{
+  "mcpServers": {
+    "puppeteer": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-puppeteer"]
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Web scraping and automation
+- PDF generation from web pages
+- Screenshot capture
+- Form submission automation
+- Performance testing
+
+### Playwright MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-playwright
+
+# Configuration
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-playwright"]
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Cross-browser automation
+- Mobile device emulation
+- Network interception
+- Visual testing and comparison
+- API testing integration
+
+### Brave Search MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-brave-search
+
+# Configuration
+{
+  "mcpServers": {
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Web search with privacy focus
+- Real-time information retrieval
+- News and content discovery
+- Image and video search
+- Safe search filtering
+
+## File System & Storage MCPs
+
+### File System MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-filesystem
+
+# Configuration
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/allowed/path"]
+    }
+  }
+}
+```
+
+**Capabilities:**
+- File and directory operations
+- Content reading and writing
+- Permission management
+- Search and filtering
+- Backup and synchronization
+
+### Fetch MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-fetch
+
+# Configuration
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"]
+    }
+  }
+}
+```
+
+**Capabilities:**
+- HTTP requests (GET, POST, PUT, DELETE)
+- Header and cookie management
+- Response processing and parsing
+- Authentication handling
+- Rate limiting and retry logic
+
+## Communication MCPs
+
+### Email MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-email
+
+# Configuration
+{
+  "mcpServers": {
+    "email": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-email"],
+      "env": {
+        "SMTP_HOST": "smtp.gmail.com",
+        "SMTP_USER": "your-email@gmail.com",
+        "SMTP_PASS": "your-password"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Email composition and sending
+- Attachment handling
+- Template management
+- Delivery tracking
+- Spam filtering
+
+### SMS MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-sms
+
+# Configuration
+{
+  "mcpServers": {
+    "sms": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sms"],
+      "env": {
+        "TWILIO_ACCOUNT_SID": "your-sid",
+        "TWILIO_AUTH_TOKEN": "your-token"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- SMS message sending
+- Delivery status tracking
+- Phone number validation
+- Multi-country support
+- Cost optimization
+
+## Security & Analytics MCPs
+
+### Time MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-time
+
+# Configuration
+{
+  "mcpServers": {
+    "time": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-time"]
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Current time and date retrieval
+- Timezone conversions
+- Date calculations and formatting
+- Holiday and calendar operations
+- Scheduling assistance
+
+### Analytics MCP
+```bash
+# Installation
+npm install @modelcontextprotocol/server-analytics
+
+# Configuration
+{
+  "mcpServers": {
+    "analytics": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-analytics"],
+      "env": {
+        "ANALYTICS_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Capabilities:**
+- Website traffic analysis
+- User behavior tracking
+- Conversion rate optimization
+- A/B testing support
+- Custom metrics and reporting
+
+## Custom MCP Development
+
+### Basic MCP Structure
+```typescript
+// server.ts
+import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+
+const server = new Server(
+  {
+    name: "my-custom-mcp",
+    version: "1.0.0"
+  },
+  {
+    capabilities: {
+      tools: {},
+      resources: {},
+      prompts: {}
+    }
+  }
+)
+
+// Add tool handlers
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      {
+        name: "my_tool",
+        description: "Description of my tool",
+        inputSchema: {
+          type: "object",
+          properties: {
+            param1: {
+              type: "string",
+              description: "First parameter"
+            }
+          },
+          required: ["param1"]
+        }
+      }
+    ]
+  }
+})
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params
+  
+  if (name === "my_tool") {
+    // Tool implementation
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Result: ${args.param1}`
+        }
+      ]
+    }
+  }
+  
+  throw new Error(`Unknown tool: ${name}`)
+})
+
+// Start server
+const transport = new StdioServerTransport()
+await server.connect(transport)
+```
+
+### Resource Provider
+```typescript
+// Add resource handlers
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  return {
+    resources: [
+      {
+        uri: "file://my-resource",
+        name: "My Resource",
+        description: "A custom resource",
+        mimeType: "application/json"
+      }
+    ]
+  }
+})
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  const { uri } = request.params
+  
+  if (uri === "file://my-resource") {
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: "application/json",
+          text: JSON.stringify({ data: "example" })
+        }
+      ]
+    }
+  }
+  
+  throw new Error(`Unknown resource: ${uri}`)
+})
+```
+
+## Configuration Best Practices
+
+### Security Considerations
+```json
+{
+  "mcpServers": {
+    "secure-service": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-secure"],
+      "env": {
+        "API_KEY": "your-secure-api-key"
+      },
+      "disabled": false,
+      "alwaysAllow": [],
+      "initializationOptions": {
+        "timeout": 30000,
+        "retries": 3
+      }
+    }
+  }
+}
+```
+
+### Environment Management
+```bash
+# Development
+export MCP_ENV=development
+export LOG_LEVEL=debug
+
+# Production
+export MCP_ENV=production
+export LOG_LEVEL=info
+export RATE_LIMIT=1000
+```
+
+### Monitoring and Logging
+```typescript
+// Add logging to MCP server
+import { logger } from '@modelcontextprotocol/sdk/shared/logging.js'
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  logger.info('Tool called', { 
+    tool: request.params.name, 
+    args: request.params.arguments 
+  })
+  
+  try {
+    const result = await handleTool(request)
+    logger.info('Tool completed successfully')
+    return result
+  } catch (error) {
+    logger.error('Tool failed', { error: error.message })
+    throw error
+  }
+})
+```
+
+## Best Practices
+
+1. **Choose MCPs based on your specific use case**
+2. **Configure proper authentication and permissions**
+3. **Monitor MCP performance and resource usage**
+4. **Implement proper error handling and logging**
+5. **Keep MCPs updated to latest versions**
+6. **Use environment variables for sensitive configuration**
+7. **Test MCP integrations thoroughly**
+8. **Document custom MCP implementations**
+9. **Implement rate limiting for external APIs**
+10. **Consider security implications of each MCP**

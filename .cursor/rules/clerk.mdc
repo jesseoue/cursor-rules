@@ -1,0 +1,685 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+rule_type: auto_attached
+title: Clerk Authentication Rules
+description: Clerk authentication setup and user management patterns
+patterns: ["**/clerk/**/*.{ts,tsx}", "**/middleware.{ts,tsx}", "**/api/webhooks/clerk/**/*.{ts,tsx}", "**/auth/**/*.{ts,tsx}"]
+---
+
+# Clerk Authentication Rules
+
+## Setup & Configuration
+
+### Installation & Basic Setup
+```bash
+npm install @clerk/nextjs
+```
+
+### Environment Variables
+```bash
+# .env.local
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
+```
+
+### App Layout Configuration
+```typescript
+// app/layout.tsx
+import { ClerkProvider } from '@clerk/nextjs'
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <ClerkProvider>
+      <html lang="en">
+        <body>{children}</body>
+      </html>
+    </ClerkProvider>
+  )
+}
+```
+
+### Middleware Setup
+```typescript
+// middleware.ts
+import { authMiddleware } from "@clerk/nextjs"
+
+export default authMiddleware({
+  // Routes that can be accessed while signed out
+  publicRoutes: ["/", "/contact", "/about"],
+  // Routes that can always be accessed, and have
+  // no authentication information
+  ignoredRoutes: ["/no-auth-in-this-route"],
+})
+
+export const config = {
+  // Protects all routes, including api/trpc.
+  // See https://clerk.com/docs/references/nextjs/auth-middleware
+  // for more information about configuring your Middleware
+  matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/", "/(api|trpc)(.*)"],
+}
+```
+
+## Authentication Components
+
+### Sign In/Sign Up Pages
+```typescript
+// app/sign-in/[[...sign-in]]/page.tsx
+import { SignIn } from "@clerk/nextjs"
+
+export default function Page() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <SignIn />
+    </div>
+  )
+}
+
+// app/sign-up/[[...sign-up]]/page.tsx
+import { SignUp } from "@clerk/nextjs"
+
+export default function Page() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <SignUp />
+    </div>
+  )
+}
+```
+
+### User Button Component
+```typescript
+// components/user-button.tsx
+import { UserButton } from "@clerk/nextjs"
+
+export function HeaderUserButton() {
+  return (
+    <UserButton
+      appearance={{
+        elements: {
+          avatarBox: "h-10 w-10",
+        },
+        variables: {
+          colorPrimary: "hsl(263, 70%, 50%)",
+        },
+      }}
+      userProfileMode="navigation"
+      userProfileUrl="/user-profile"
+      afterSignOutUrl="/"
+    />
+  )
+}
+```
+
+### Custom Sign In Form
+```typescript
+// components/custom-sign-in.tsx
+import { useSignIn } from "@clerk/nextjs"
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+
+export function CustomSignIn() {
+  const { isLoaded, signIn, setActive } = useSignIn()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!isLoaded) return
+
+    setLoading(true)
+    try {
+      const result = await signIn.create({
+        identifier: email,
+        password,
+      })
+
+      if (result.status === "complete") {
+        await setActive({ session: result.createdSessionId })
+      }
+    } catch (err: any) {
+      console.error("Error:", err.errors[0].longMessage)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!isLoaded) {
+    return <div>Loading...</div>
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <Label htmlFor="email">Email</Label>
+        <Input
+          id="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+      </div>
+      <div>
+        <Label htmlFor="password">Password</Label>
+        <Input
+          id="password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </div>
+      <Button type="submit" disabled={loading} className="w-full">
+        {loading ? "Signing in..." : "Sign In"}
+      </Button>
+    </form>
+  )
+}
+```
+
+## User Management
+
+### Getting User Information
+```typescript
+// hooks/use-user.ts
+import { useUser } from "@clerk/nextjs"
+
+export function useCurrentUser() {
+  const { user, isLoaded, isSignedIn } = useUser()
+
+  return {
+    user,
+    isLoaded,
+    isSignedIn,
+    userId: user?.id,
+    email: user?.emailAddresses[0]?.emailAddress,
+    firstName: user?.firstName,
+    lastName: user?.lastName,
+    fullName: user?.fullName,
+    imageUrl: user?.imageUrl,
+  }
+}
+
+// Usage in component
+function UserProfile() {
+  const { user, isSignedIn, isLoaded } = useCurrentUser()
+
+  if (!isLoaded) return <div>Loading...</div>
+  if (!isSignedIn) return <div>Not signed in</div>
+
+  return (
+    <div>
+      <h1>Welcome, {user?.firstName}!</h1>
+      <p>Email: {user?.email}</p>
+      <img src={user?.imageUrl} alt="Profile" />
+    </div>
+  )
+}
+```
+
+### Server-Side User Access
+```typescript
+// app/dashboard/page.tsx
+import { auth } from "@clerk/nextjs"
+import { redirect } from "next/navigation"
+
+export default function DashboardPage() {
+  const { userId } = auth()
+
+  if (!userId) {
+    redirect("/sign-in")
+  }
+
+  return <div>Dashboard for user: {userId}</div>
+}
+
+// Get user object server-side
+import { currentUser } from "@clerk/nextjs"
+
+export default async function ProfilePage() {
+  const user = await currentUser()
+
+  if (!user) {
+    redirect("/sign-in")
+  }
+
+  return (
+    <div>
+      <h1>Profile</h1>
+      <p>First Name: {user.firstName}</p>
+      <p>Last Name: {user.lastName}</p>
+      <p>Email: {user.emailAddresses[0].emailAddress}</p>
+    </div>
+  )
+}
+```
+
+### API Route Protection
+```typescript
+// app/api/protected/route.ts
+import { auth } from "@clerk/nextjs"
+import { NextResponse } from "next/server"
+
+export async function GET() {
+  const { userId } = auth()
+
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Your protected logic here
+  return NextResponse.json({ message: "Protected data", userId })
+}
+
+// With user object
+import { currentUser } from "@clerk/nextjs"
+
+export async function POST(request: Request) {
+  const user = await currentUser()
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const body = await request.json()
+
+  // Process with user context
+  return NextResponse.json({ 
+    message: "Success",
+    user: user.id,
+    data: body 
+  })
+}
+```
+
+## Organization Management
+
+### Organization Provider
+```typescript
+// app/layout.tsx with organizations
+import { ClerkProvider } from '@clerk/nextjs'
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <ClerkProvider>
+      <html lang="en">
+        <body>{children}</body>
+      </html>
+    </ClerkProvider>
+  )
+}
+```
+
+### Organization Switcher
+```typescript
+// components/org-switcher.tsx
+import { OrganizationSwitcher } from "@clerk/nextjs"
+
+export function OrgSwitcher() {
+  return (
+    <OrganizationSwitcher
+      appearance={{
+        elements: {
+          rootBox: {
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          },
+        },
+      }}
+      afterCreateOrganizationUrl="/dashboard"
+      afterLeaveOrganizationUrl="/dashboard"
+      afterSelectOrganizationUrl="/dashboard"
+    />
+  )
+}
+```
+
+### Organization Permissions
+```typescript
+// hooks/use-organization.ts
+import { useOrganization, useUser } from "@clerk/nextjs"
+
+export function useOrgPermissions() {
+  const { organization, membership } = useOrganization()
+  const { user } = useUser()
+
+  const isAdmin = membership?.role === "admin"
+  const isMember = membership?.role === "basic_member"
+  const isOwner = organization?.createdBy === user?.id
+
+  return {
+    organization,
+    membership,
+    isAdmin,
+    isMember,
+    isOwner,
+    hasPermission: (permission: string) => {
+      return membership?.permissions?.includes(permission) || false
+    },
+  }
+}
+
+// Usage
+function AdminPanel() {
+  const { isAdmin, hasPermission } = useOrgPermissions()
+
+  if (!isAdmin && !hasPermission("admin:access")) {
+    return <div>Access denied</div>
+  }
+
+  return <div>Admin content</div>
+}
+```
+
+## Webhooks
+
+### Webhook Handler
+```typescript
+// app/api/webhooks/clerk/route.ts
+import { headers } from "next/headers"
+import { NextResponse } from "next/server"
+import { Webhook } from "svix"
+
+const webhookSecret = process.env.CLERK_WEBHOOK_SECRET
+
+export async function POST(request: Request) {
+  if (!webhookSecret) {
+    throw new Error("Please add CLERK_WEBHOOK_SECRET to your environment variables")
+  }
+
+  // Get the headers
+  const headerPayload = headers()
+  const svix_id = headerPayload.get("svix-id")
+  const svix_timestamp = headerPayload.get("svix-timestamp")
+  const svix_signature = headerPayload.get("svix-signature")
+
+  if (!svix_id || !svix_timestamp || !svix_signature) {
+    return new Response("Error occurred -- no svix headers", {
+      status: 400,
+    })
+  }
+
+  // Get the body
+  const payload = await request.text()
+  const body = JSON.parse(payload)
+
+  // Create a new Svix instance with your secret.
+  const wh = new Webhook(webhookSecret)
+
+  let evt: any
+
+  try {
+    evt = wh.verify(payload, {
+      "svix-id": svix_id,
+      "svix-timestamp": svix_timestamp,
+      "svix-signature": svix_signature,
+    })
+  } catch (err) {
+    console.error("Error verifying webhook:", err)
+    return new Response("Error occurred", {
+      status: 400,
+    })
+  }
+
+  // Handle the webhook
+  const eventType = evt.type
+
+  switch (eventType) {
+    case "user.created":
+      await handleUserCreated(evt.data)
+      break
+    case "user.updated":
+      await handleUserUpdated(evt.data)
+      break
+    case "user.deleted":
+      await handleUserDeleted(evt.data)
+      break
+    case "organization.created":
+      await handleOrganizationCreated(evt.data)
+      break
+    case "organizationMembership.created":
+      await handleMembershipCreated(evt.data)
+      break
+    default:
+      console.log(`Unhandled event type: ${eventType}`)
+  }
+
+  return NextResponse.json({ received: true })
+}
+
+async function handleUserCreated(user: any) {
+  // Create user in your database
+  console.log("User created:", user.id)
+}
+
+async function handleUserUpdated(user: any) {
+  // Update user in your database
+  console.log("User updated:", user.id)
+}
+
+async function handleUserDeleted(user: any) {
+  // Delete user from your database
+  console.log("User deleted:", user.id)
+}
+
+async function handleOrganizationCreated(org: any) {
+  // Create organization in your database
+  console.log("Organization created:", org.id)
+}
+
+async function handleMembershipCreated(membership: any) {
+  // Handle new organization membership
+  console.log("Membership created:", membership.id)
+}
+```
+
+## Advanced Patterns
+
+### Route Protection Higher-Order Component
+```typescript
+// components/protected-route.tsx
+import { useAuth } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
+import { useEffect } from "react"
+
+interface ProtectedRouteProps {
+  children: React.ReactNode
+  redirectTo?: string
+  requireOrg?: boolean
+}
+
+export function ProtectedRoute({ 
+  children, 
+  redirectTo = "/sign-in",
+  requireOrg = false 
+}: ProtectedRouteProps) {
+  const { isLoaded, isSignedIn, orgId } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      router.push(redirectTo)
+    }
+    
+    if (isLoaded && isSignedIn && requireOrg && !orgId) {
+      router.push("/select-organization")
+    }
+  }, [isLoaded, isSignedIn, orgId, router, redirectTo, requireOrg])
+
+  if (!isLoaded) {
+    return <div>Loading...</div>
+  }
+
+  if (!isSignedIn) {
+    return null
+  }
+
+  if (requireOrg && !orgId) {
+    return null
+  }
+
+  return <>{children}</>
+}
+```
+
+### Custom Authentication Flow
+```typescript
+// components/multi-step-auth.tsx
+import { useSignUp, useSignIn } from "@clerk/nextjs"
+import { useState } from "react"
+
+export function MultiStepAuth() {
+  const { signUp, setActive } = useSignUp()
+  const { signIn } = useSignIn()
+  const [step, setStep] = useState<"email" | "code" | "complete">("email")
+  const [email, setEmail] = useState("")
+  const [code, setCode] = useState("")
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    try {
+      // Try to sign in first
+      const signInResult = await signIn?.create({
+        identifier: email,
+      })
+
+      if (signInResult?.status === "needs_first_factor") {
+        // User exists, proceed with sign in
+        setStep("code")
+      }
+    } catch (signInError) {
+      // User doesn't exist, create account
+      try {
+        await signUp?.create({
+          emailAddress: email,
+        })
+        
+        await signUp?.prepareEmailAddressVerification({
+          strategy: "email_code",
+        })
+        
+        setStep("code")
+      } catch (signUpError) {
+        console.error("Error:", signUpError)
+      }
+    }
+  }
+
+  const handleCodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    try {
+      const result = await signUp?.attemptEmailAddressVerification({
+        code,
+      })
+
+      if (result?.status === "complete") {
+        await setActive?.({ session: result.createdSessionId })
+        setStep("complete")
+      }
+    } catch (error) {
+      console.error("Error:", error)
+    }
+  }
+
+  if (step === "email") {
+    return (
+      <form onSubmit={handleEmailSubmit}>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Enter your email"
+          required
+        />
+        <button type="submit">Continue</button>
+      </form>
+    )
+  }
+
+  if (step === "code") {
+    return (
+      <form onSubmit={handleCodeSubmit}>
+        <input
+          type="text"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="Enter verification code"
+          required
+        />
+        <button type="submit">Verify</button>
+      </form>
+    )
+  }
+
+  return <div>Welcome! You're now signed in.</div>
+}
+```
+
+## Styling & Customization
+
+### Custom Appearance
+```typescript
+// lib/clerk-theme.ts
+import { dark } from "@clerk/themes"
+
+export const clerkAppearance = {
+  baseTheme: dark,
+  variables: {
+    colorPrimary: "hsl(263, 70%, 50%)",
+    colorBackground: "hsl(0, 0%, 100%)",
+    colorInputBackground: "hsl(0, 0%, 100%)",
+    colorInputText: "hsl(240, 10%, 3.9%)",
+    colorText: "hsl(240, 10%, 3.9%)",
+    colorTextSecondary: "hsl(240, 5%, 64.9%)",
+    colorNeutral: "hsl(240, 4.8%, 95.9%)",
+    colorDanger: "hsl(0, 84%, 60%)",
+    colorSuccess: "hsl(142, 76%, 36%)",
+    colorWarning: "hsl(38, 92%, 50%)",
+    borderRadius: "0.5rem",
+  },
+  elements: {
+    card: "shadow-lg border",
+    headerTitle: "text-2xl font-bold",
+    formButtonPrimary: "bg-primary hover:bg-primary/90",
+    footerActionLink: "text-primary hover:text-primary/90",
+  },
+}
+
+// Usage in components
+<SignIn appearance={clerkAppearance} />
+```
+
+## Best Practices
+
+1. **Use middleware for route protection**
+2. **Implement proper error handling in auth flows**
+3. **Use webhooks for database synchronization**
+4. **Leverage organization features for multi-tenant apps**
+5. **Customize appearance to match your brand**
+6. **Use server-side auth checking for sensitive operations**
+7. **Implement proper loading states**
+8. **Handle authentication errors gracefully**
+9. **Use TypeScript for better development experience**
+10. **Test authentication flows thoroughly**

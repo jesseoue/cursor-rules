@@ -1,0 +1,380 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+rule_type: always
+title: TypeScript Development Rules
+description: Core TypeScript configuration and development patterns
+---
+
+# TypeScript Development Rules
+
+## Core Configuration
+
+### tsconfig.json Setup
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/components/*": ["./src/components/*"],
+      "@/lib/*": ["./src/lib/*"],
+      "@/types/*": ["./src/types/*"]
+    },
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+```
+
+## Type Definitions
+
+### API Response Types
+```typescript
+// Base API response structure
+type ApiResponse<T> = {
+  data: T
+  success: boolean
+  message?: string
+  error?: string
+}
+
+// Paginated response
+type PaginatedResponse<T> = ApiResponse<{
+  items: T[]
+  total: number
+  page: number
+  limit: number
+  hasNext: boolean
+  hasPrev: boolean
+}>
+
+// Error response
+type ErrorResponse = {
+  success: false
+  error: string
+  details?: Record<string, string[]>
+}
+```
+
+### Database Entity Types
+```typescript
+// Base entity with common fields
+type BaseEntity = {
+  id: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+// User entity
+type User = BaseEntity & {
+  email: string
+  name: string | null
+  role: 'user' | 'admin'
+  settings: UserSettings
+}
+
+type UserSettings = {
+  theme: 'light' | 'dark' | 'system'
+  notifications: boolean
+  language: string
+}
+```
+
+## Advanced Type Patterns
+
+### Utility Types
+```typescript
+// Deep partial for nested objects
+type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P]
+}
+
+// Deep required
+type DeepRequired<T> = {
+  [P in keyof T]-?: T[P] extends object ? DeepRequired<T[P]> : T[P]
+}
+
+// Pick nested properties
+type NestedPick<T, K extends keyof T> = {
+  [P in K]: T[P] extends object ? Partial<T[P]> : T[P]
+}
+
+// Extract array type
+type ArrayElement<ArrayType extends readonly unknown[]> = 
+  ArrayType extends readonly (infer ElementType)[] ? ElementType : never
+```
+
+### Conditional Types
+```typescript
+// Check if type has property
+type HasProperty<T, K extends string> = K extends keyof T ? true : false
+
+// Extract functions from object
+type FunctionKeys<T> = {
+  [K in keyof T]: T[K] extends Function ? K : never
+}[keyof T]
+
+// Non-function properties
+type NonFunctionKeys<T> = {
+  [K in keyof T]: T[K] extends Function ? never : K
+}[keyof T]
+
+// Extract return type from promise
+type UnwrapPromise<T> = T extends Promise<infer U> ? U : T
+```
+
+## Type Guards
+
+### Runtime Type Checking
+```typescript
+// Check if value is not null/undefined
+function isDefined<T>(value: T | null | undefined): value is T {
+  return value !== null && value !== undefined
+}
+
+// Check if string is not empty
+function isNonEmptyString(value: string | null | undefined): value is string {
+  return typeof value === 'string' && value.length > 0
+}
+
+// Check if array has items
+function hasItems<T>(array: T[] | null | undefined): array is T[] {
+  return Array.isArray(array) && array.length > 0
+}
+
+// Type guard for object with required keys
+function hasRequiredKeys<T extends Record<string, any>, K extends keyof T>(
+  obj: T,
+  keys: K[]
+): obj is T & Required<Pick<T, K>> {
+  return keys.every(key => key in obj && obj[key] !== undefined)
+}
+```
+
+### API Response Guards
+```typescript
+function isSuccessResponse<T>(
+  response: ApiResponse<T> | ErrorResponse
+): response is ApiResponse<T> {
+  return response.success === true && 'data' in response
+}
+
+function isErrorResponse(
+  response: ApiResponse<any> | ErrorResponse
+): response is ErrorResponse {
+  return response.success === false && 'error' in response
+}
+```
+
+## Generic Utilities
+
+### Form Handling Types
+```typescript
+// Form field configuration
+type FormField<T> = {
+  name: keyof T
+  label: string
+  type: 'text' | 'email' | 'password' | 'number' | 'select' | 'textarea'
+  required?: boolean
+  validation?: (value: any) => string | undefined
+  options?: Array<{ label: string; value: string }>
+}
+
+// Form state
+type FormState<T> = {
+  values: T
+  errors: Partial<Record<keyof T, string>>
+  touched: Partial<Record<keyof T, boolean>>
+  isSubmitting: boolean
+  isValid: boolean
+}
+
+// Form action types
+type FormAction<T> = 
+  | { type: 'SET_VALUE'; field: keyof T; value: any }
+  | { type: 'SET_ERROR'; field: keyof T; error: string }
+  | { type: 'SET_TOUCHED'; field: keyof T }
+  | { type: 'SET_SUBMITTING'; isSubmitting: boolean }
+  | { type: 'RESET' }
+```
+
+### Database Query Types
+```typescript
+// Where clause builder
+type WhereClause<T> = {
+  [K in keyof T]?: T[K] | {
+    equals?: T[K]
+    not?: T[K]
+    in?: T[K][]
+    notIn?: T[K][]
+    lt?: T[K]
+    lte?: T[K]
+    gt?: T[K]
+    gte?: T[K]
+    contains?: string
+    startsWith?: string
+    endsWith?: string
+  }
+}
+
+// Order by clause
+type OrderBy<T> = {
+  [K in keyof T]?: 'asc' | 'desc'
+}
+
+// Query options
+type QueryOptions<T> = {
+  where?: WhereClause<T>
+  orderBy?: OrderBy<T>
+  limit?: number
+  offset?: number
+  include?: string[]
+}
+```
+
+## Error Handling Types
+
+### Custom Error Classes
+```typescript
+// Base application error
+abstract class AppError extends Error {
+  abstract readonly statusCode: number
+  abstract readonly isOperational: boolean
+
+  constructor(message: string, public readonly context?: Record<string, any>) {
+    super(message)
+    this.name = this.constructor.name
+    Error.captureStackTrace(this, this.constructor)
+  }
+}
+
+// Validation error
+class ValidationError extends AppError {
+  readonly statusCode = 400
+  readonly isOperational = true
+
+  constructor(
+    message: string,
+    public readonly field?: string,
+    context?: Record<string, any>
+  ) {
+    super(message, context)
+  }
+}
+
+// Not found error
+class NotFoundError extends AppError {
+  readonly statusCode = 404
+  readonly isOperational = true
+}
+
+// Authentication error
+class AuthenticationError extends AppError {
+  readonly statusCode = 401
+  readonly isOperational = true
+}
+```
+
+### Result Type Pattern
+```typescript
+// Result type for error handling without exceptions
+type Result<T, E = Error> = 
+  | { success: true; data: T }
+  | { success: false; error: E }
+
+// Result utilities
+const ok = <T>(data: T): Result<T, never> => ({ success: true, data })
+const err = <E>(error: E): Result<never, E> => ({ success: false, error })
+
+// Async result wrapper
+async function wrapAsync<T>(
+  promise: Promise<T>
+): Promise<Result<T, Error>> {
+  try {
+    const data = await promise
+    return ok(data)
+  } catch (error) {
+    return err(error instanceof Error ? error : new Error(String(error)))
+  }
+}
+```
+
+## Environment & Configuration
+
+### Environment Variables
+```typescript
+// Environment schema
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']),
+  DATABASE_URL: z.string().url(),
+  NEXTAUTH_SECRET: z.string().min(1),
+  NEXTAUTH_URL: z.string().url(),
+  REDIS_URL: z.string().url().optional(),
+  SENTRY_DSN: z.string().url().optional(),
+})
+
+type Env = z.infer<typeof envSchema>
+
+// Validate environment at startup
+const env = envSchema.parse(process.env)
+
+export { env }
+```
+
+### Configuration Types
+```typescript
+type DatabaseConfig = {
+  url: string
+  maxConnections: number
+  timeout: number
+  retries: number
+}
+
+type AuthConfig = {
+  secret: string
+  tokenExpiry: number
+  refreshTokenExpiry: number
+  providers: AuthProvider[]
+}
+
+type AppConfig = {
+  database: DatabaseConfig
+  auth: AuthConfig
+  redis: RedisConfig
+  logging: LoggingConfig
+}
+```
+
+## Best Practices
+
+1. **Always use strict TypeScript configuration**
+2. **Prefer type over interface for unions and primitives**
+3. **Use interface for object shapes that might be extended**
+4. **Create utility types for common patterns**
+5. **Use type guards for runtime type checking**
+6. **Implement proper error handling with Result types**
+7. **Validate environment variables at startup**
+8. **Use const assertions for immutable data**
+9. **Prefer branded types for IDs and unique values**
+10. **Use satisfies operator for type checking without widening**
