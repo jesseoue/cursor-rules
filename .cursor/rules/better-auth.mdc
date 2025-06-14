@@ -1,0 +1,789 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# BetterAuth Development Rules
+
+## Core Setup
+
+### Installation & Configuration
+```typescript
+// lib/auth.ts
+import { betterAuth } from "better-auth"
+import { prismaAdapter } from "better-auth/adapters/prisma"
+import { nextCookies } from "better-auth/next-js"
+import { prisma } from "./prisma"
+
+export const auth = betterAuth({
+  database: prismaAdapter(prisma, {
+    provider: "postgresql", // or "mysql", "sqlite"
+  }),
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: true,
+    sendResetPassword: async ({ user, url }) => {
+      // Send reset password email
+      await sendEmail({
+        to: user.email,
+        subject: "Reset your password",
+        html: `<a href="${url}">Reset Password</a>`,
+      })
+    },
+    sendVerificationEmail: async ({ user, url }) => {
+      // Send verification email
+      await sendEmail({
+        to: user.email,
+        subject: "Verify your email",
+        html: `<a href="${url}">Verify Email</a>`,
+      })
+    }
+  },
+  socialProviders: {
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+    discord: {
+      clientId: process.env.DISCORD_CLIENT_ID!,
+      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+    }
+  },
+  plugins: [
+    nextCookies(),
+  ],
+  session: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24, // 1 day
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60 * 1000, // 5 minutes
+    }
+  },
+  user: {
+    additionalFields: {
+      firstName: {
+        type: "string",
+        required: false,
+      },
+      lastName: {
+        type: "string", 
+        required: false,
+      },
+      avatar: {
+        type: "string",
+        required: false,
+      },
+      role: {
+        type: "string",
+        required: false,
+        defaultValue: "user",
+      }
+    }
+  },
+  advanced: {
+    generateId: () => crypto.randomUUID(),
+    crossSubDomainCookies: {
+      enabled: true,
+      domain: process.env.NODE_ENV === "production" ? ".yourdomain.com" : undefined,
+    }
+  }
+})
+
+export type Session = typeof auth.$Infer.Session
+export type User = typeof auth.$Infer.User
+```
+
+### Database Schema
+```sql
+-- Prisma schema.prisma
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  name          String?
+  firstName     String?
+  lastName      String?
+  avatar        String?
+  role          String    @default("user")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  providerId        String
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([providerId, providerAccountId])
+  @@map("accounts")
+}
+
+model VerificationToken {
+  id         String   @id @default(cuid())
+  identifier String
+  token      String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+```
+
+## API Routes
+
+### Auth API Handler
+```typescript
+// app/api/auth/[...betterauth]/route.ts
+import { auth } from "@/lib/auth"
+import { toNextJsHandler } from "better-auth/next-js"
+
+const handler = toNextJsHandler(auth)
+
+export { handler as GET, handler as POST }
+```
+
+### Protected API Routes
+```typescript
+// app/api/protected/route.ts
+import { auth } from "@/lib/auth"
+import { NextRequest, NextResponse } from "next/server"
+
+export async function GET(request: NextRequest) {
+  const session = await auth.api.getSession({
+    headers: request.headers
+  })
+
+  if (!session) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    )
+  }
+
+  // Access user data
+  const { user } = session
+
+  return NextResponse.json({
+    message: "Protected data",
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    }
+  })
+}
+
+// Role-based protection
+export async function POST(request: NextRequest) {
+  const session = await auth.api.getSession({
+    headers: request.headers
+  })
+
+  if (!session || session.user.role !== "admin") {
+    return NextResponse.json(
+      { error: "Admin access required" },
+      { status: 403 }
+    )
+  }
+
+  // Admin-only logic
+  return NextResponse.json({ success: true })
+}
+```
+
+## Client-Side Usage
+
+### Auth Client Setup
+```typescript
+// lib/auth-client.ts
+import { createAuthClient } from "better-auth/react"
+import type { auth } from "./auth"
+
+export const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_BASE_URL,
+})
+
+export const {
+  signIn,
+  signUp,
+  signOut,
+  useSession,
+  getSession,
+  $fetch
+} = authClient
+
+// Type-safe session hook
+export function useAuth() {
+  const session = useSession()
+  
+  return {
+    user: session.data?.user ?? null,
+    isLoading: session.isPending,
+    isAuthenticated: !!session.data?.session,
+    session: session.data?.session ?? null,
+    error: session.error,
+  }
+}
+```
+
+### Authentication Components
+```typescript
+// components/auth/sign-in-form.tsx
+"use client"
+
+import { useState } from "react"
+import { signIn } from "@/lib/auth-client"
+import { useRouter } from "next/navigation"
+
+interface SignInFormProps {
+  redirectTo?: string
+}
+
+export function SignInForm({ redirectTo = "/" }: SignInFormProps) {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      await signIn.email({
+        email,
+        password,
+        callbackURL: redirectTo,
+      })
+      
+      router.push(redirectTo)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSocialSignIn = async (provider: "github" | "google" | "discord") => {
+    try {
+      await signIn.social({
+        provider,
+        callbackURL: redirectTo,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred")
+    }
+  }
+
+  return (
+    <div className="w-full max-w-md mx-auto">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+          />
+        </div>
+        
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+          />
+        </div>
+
+        {error && (
+          <div className="text-red-600 text-sm">{error}</div>
+        )}
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isLoading ? "Signing in..." : "Sign In"}
+        </button>
+      </form>
+
+      <div className="mt-6">
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-300" />
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-white text-gray-500">Or continue with</span>
+          </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-3 gap-3">
+          <button
+            onClick={() => handleSocialSignIn("github")}
+            className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+          >
+            GitHub
+          </button>
+          <button
+            onClick={() => handleSocialSignIn("google")}
+            className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+          >
+            Google
+          </button>
+          <button
+            onClick={() => handleSocialSignIn("discord")}
+            className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+          >
+            Discord
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+### Sign Up Component
+```typescript
+// components/auth/sign-up-form.tsx
+"use client"
+
+import { useState } from "react"
+import { signUp } from "@/lib/auth-client"
+import { useRouter } from "next/navigation"
+
+export function SignUpForm() {
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    firstName: "",
+    lastName: "",
+  })
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const router = useRouter()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setError(null)
+    setMessage(null)
+
+    try {
+      await signUp.email({
+        email: formData.email,
+        password: formData.password,
+        name: `${formData.firstName} ${formData.lastName}`.trim(),
+      })
+      
+      setMessage("Account created! Please check your email to verify your account.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({
+      ...prev,
+      [e.target.name]: e.target.value
+    }))
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4 max-w-md mx-auto">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="firstName" className="block text-sm font-medium">
+            First Name
+          </label>
+          <input
+            id="firstName"
+            name="firstName"
+            type="text"
+            value={formData.firstName}
+            onChange={handleChange}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+          />
+        </div>
+        <div>
+          <label htmlFor="lastName" className="block text-sm font-medium">
+            Last Name
+          </label>
+          <input
+            id="lastName"
+            name="lastName"
+            type="text"
+            value={formData.lastName}
+            onChange={handleChange}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor="email" className="block text-sm font-medium">
+          Email
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          value={formData.email}
+          onChange={handleChange}
+          required
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="password" className="block text-sm font-medium">
+          Password
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          value={formData.password}
+          onChange={handleChange}
+          required
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+        />
+      </div>
+
+      {error && (
+        <div className="text-red-600 text-sm">{error}</div>
+      )}
+      {message && (
+        <div className="text-green-600 text-sm">{message}</div>
+      )}
+
+      <button
+        type="submit"
+        disabled={isLoading}
+        className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+      >
+        {isLoading ? "Creating Account..." : "Sign Up"}
+      </button>
+    </form>
+  )
+}
+```
+
+## Middleware Protection
+
+### Next.js Middleware
+```typescript
+// middleware.ts
+import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
+import { auth } from "@/lib/auth"
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Public routes that don't require authentication
+  const publicRoutes = [
+    "/",
+    "/auth/signin",
+    "/auth/signup",
+    "/auth/forgot-password",
+    "/auth/verify-email",
+    "/api/auth",
+  ]
+
+  // Check if the current path is public
+  const isPublicRoute = publicRoutes.some(route => 
+    pathname.startsWith(route)
+  )
+
+  if (isPublicRoute) {
+    return NextResponse.next()
+  }
+
+  // Check authentication for protected routes
+  const session = await auth.api.getSession({
+    headers: request.headers
+  })
+
+  if (!session) {
+    const signInUrl = new URL("/auth/signin", request.url)
+    signInUrl.searchParams.set("callbackUrl", pathname)
+    return NextResponse.redirect(signInUrl)
+  }
+
+  // Role-based route protection
+  if (pathname.startsWith("/admin")) {
+    if (session.user.role !== "admin") {
+      return NextResponse.redirect(new URL("/unauthorized", request.url))
+    }
+  }
+
+  if (pathname.startsWith("/dashboard")) {
+    if (!["admin", "user"].includes(session.user.role)) {
+      return NextResponse.redirect(new URL("/unauthorized", request.url))
+    }
+  }
+
+  return NextResponse.next()
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public (public files)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|public).*)',
+  ],
+}
+```
+
+## Advanced Patterns
+
+### Session Management Hook
+```typescript
+// hooks/use-session-management.ts
+import { useEffect, useState } from "react"
+import { useAuth } from "@/lib/auth-client"
+
+export function useSessionManagement() {
+  const { user, isAuthenticated } = useAuth()
+  const [lastActivity, setLastActivity] = useState(Date.now())
+
+  // Track user activity
+  useEffect(() => {
+    const updateActivity = () => setLastActivity(Date.now())
+    
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart']
+    events.forEach(event => {
+      document.addEventListener(event, updateActivity, true)
+    })
+
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, updateActivity, true)
+      })
+    }
+  }, [])
+
+  // Auto-logout after inactivity
+  useEffect(() => {
+    if (!isAuthenticated) return
+
+    const checkInactivity = () => {
+      const inactiveTime = Date.now() - lastActivity
+      const maxInactiveTime = 30 * 60 * 1000 // 30 minutes
+
+      if (inactiveTime > maxInactiveTime) {
+        // Auto-logout due to inactivity
+        signOut()
+      }
+    }
+
+    const interval = setInterval(checkInactivity, 60000) // Check every minute
+    return () => clearInterval(interval)
+  }, [isAuthenticated, lastActivity])
+
+  return {
+    user,
+    isAuthenticated,
+    lastActivity,
+  }
+}
+```
+
+### Role-Based Access Control Component
+```typescript
+// components/auth/role-guard.tsx
+import { useAuth } from "@/lib/auth-client"
+
+interface RoleGuardProps {
+  roles: string[]
+  children: React.ReactNode
+  fallback?: React.ReactNode
+}
+
+export function RoleGuard({ roles, children, fallback = null }: RoleGuardProps) {
+  const { user, isAuthenticated } = useAuth()
+
+  if (!isAuthenticated || !user) {
+    return null
+  }
+
+  if (!roles.includes(user.role)) {
+    return <>{fallback}</>
+  }
+
+  return <>{children}</>
+}
+
+// Usage
+function AdminPanel() {
+  return (
+    <RoleGuard 
+      roles={["admin"]} 
+      fallback={<div>You don't have permission to view this.</div>}
+    >
+      <div>Admin-only content</div>
+    </RoleGuard>
+  )
+}
+```
+
+### Profile Management
+```typescript
+// components/auth/profile-form.tsx
+"use client"
+
+import { useState } from "react"
+import { useAuth, $fetch } from "@/lib/auth-client"
+
+export function ProfileForm() {
+  const { user } = useAuth()
+  const [formData, setFormData] = useState({
+    firstName: user?.firstName || "",
+    lastName: user?.lastName || "",
+    email: user?.email || "",
+  })
+  const [isLoading, setIsLoading] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setMessage(null)
+
+    try {
+      await $fetch("/api/auth/update-profile", {
+        method: "POST",
+        body: JSON.stringify(formData),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      setMessage("Profile updated successfully!")
+    } catch (error) {
+      setMessage("Failed to update profile")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium">First Name</label>
+        <input
+          type="text"
+          value={formData.firstName}
+          onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium">Last Name</label>
+        <input
+          type="text"
+          value={formData.lastName}
+          onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium">Email</label>
+        <input
+          type="email"
+          value={formData.email}
+          disabled
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+        />
+      </div>
+
+      {message && (
+        <div className={`text-sm ${message.includes("success") ? "text-green-600" : "text-red-600"}`}>
+          {message}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={isLoading}
+        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+      >
+        {isLoading ? "Updating..." : "Update Profile"}
+      </button>
+    </form>
+  )
+}
+```
+
+## Best Practices
+
+1. **Secure Configuration**: Always use environment variables for sensitive data
+2. **Email Verification**: Require email verification for new accounts
+3. **Password Security**: Implement strong password requirements
+4. **Session Management**: Configure appropriate session expiration times
+5. **Role-Based Access**: Implement proper authorization checks
+6. **Error Handling**: Provide meaningful error messages without exposing sensitive info
+7. **Middleware Protection**: Use middleware for route-level authentication
+8. **Type Safety**: Leverage TypeScript for better development experience
+9. **Activity Tracking**: Monitor user sessions and implement auto-logout
+10. **Social Auth**: Configure OAuth providers properly with secure redirects

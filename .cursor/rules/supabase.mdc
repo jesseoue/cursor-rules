@@ -1,0 +1,1226 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Supabase Development Rules
+
+## Core Setup
+
+### Client Configuration
+```typescript
+// lib/supabase.ts
+import { createClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/supabase'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+})
+
+// Server-side client with service role key
+export const supabaseAdmin = createClient<Database>(
+  supabaseUrl,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  }
+)
+```
+
+### Type Definitions
+```typescript
+// types/supabase.ts
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export interface Database {
+  public: {
+    Tables: {
+      users: {
+        Row: {
+          id: string
+          email: string
+          name: string | null
+          avatar_url: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          name?: string | null
+          avatar_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          name?: string | null
+          avatar_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      posts: {
+        Row: {
+          id: string
+          title: string
+          content: string
+          author_id: string
+          published: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          title: string
+          content: string
+          author_id: string
+          published?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          content?: string
+          author_id?: string
+          published?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      comments: {
+        Row: {
+          id: string
+          content: string
+          post_id: string
+          author_id: string
+          parent_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          content: string
+          post_id: string
+          author_id: string
+          parent_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          content?: string
+          post_id?: string
+          author_id?: string
+          parent_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+    }
+    Views: {
+      posts_with_author: {
+        Row: {
+          id: string
+          title: string
+          content: string
+          published: boolean
+          created_at: string
+          author_name: string
+          author_email: string
+          author_avatar_url: string | null
+        }
+      }
+    }
+    Functions: {
+      get_post_stats: {
+        Args: { post_id: string }
+        Returns: { likes: number; comments: number; views: number }
+      }
+    }
+    Enums: {
+      user_role: 'admin' | 'moderator' | 'user'
+      post_status: 'draft' | 'published' | 'archived'
+    }
+  }
+}
+
+// Helper types
+export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row']
+export type Enums<T extends keyof Database['public']['Enums']> = Database['public']['Enums'][T]
+```
+
+## Authentication
+
+### Auth Provider
+```tsx
+// providers/auth-provider.tsx
+'use client'
+
+import { createContext, useContext, useEffect, useState } from 'react'
+import { User, Session } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
+
+interface AuthContextType {
+  user: User | null
+  session: Session | null
+  loading: boolean
+  signIn: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string, name?: string) => Promise<void>
+  signOut: () => Promise<void>
+  resetPassword: (email: string) => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // Get initial session
+    const getInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      setSession(session)
+      setUser(session?.user ?? null)
+      setLoading(false)
+    }
+
+    getInitialSession()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session)
+        setUser(session?.user ?? null)
+        setLoading(false)
+
+        // Handle specific auth events
+        if (event === 'SIGNED_IN') {
+          console.log('User signed in:', session?.user?.email)
+        } else if (event === 'SIGNED_OUT') {
+          console.log('User signed out')
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const signIn = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+    if (error) throw error
+  }
+
+  const signUp = async (email: string, password: string, name?: string) => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name: name || '',
+        },
+      },
+    })
+    if (error) throw error
+  }
+
+  const signOut = async () => {
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
+  }
+
+  const resetPassword = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    })
+    if (error) throw error
+  }
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        loading,
+        signIn,
+        signUp,
+        signOut,
+        resetPassword,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export const useAuth = () => {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
+}
+```
+
+### Authentication Components
+```tsx
+// components/auth/sign-in-form.tsx
+'use client'
+
+import { useState } from 'react'
+import { useAuth } from '@/providers/auth-provider'
+import { useRouter } from 'next/navigation'
+
+export function SignInForm() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  const { signIn } = useAuth()
+  const router = useRouter()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    try {
+      await signIn(email, password)
+      router.push('/dashboard')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label htmlFor="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+        />
+      </div>
+
+      {error && (
+        <div className="text-red-600 text-sm">{error}</div>
+      )}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+      >
+        {loading ? 'Signing in...' : 'Sign In'}
+      </button>
+    </form>
+  )
+}
+
+// Social Authentication
+export function SocialAuth() {
+  const [loading, setLoading] = useState<string | null>(null)
+
+  const handleSocialSignIn = async (provider: 'google' | 'github' | 'discord') => {
+    setLoading(provider)
+    
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+    
+    if (error) {
+      console.error('Social sign in error:', error)
+    }
+    
+    setLoading(null)
+  }
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={() => handleSocialSignIn('google')}
+        disabled={loading !== null}
+        className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+      >
+        {loading === 'google' ? (
+          <div className="animate-spin h-4 w-4 border-2 border-gray-600 border-t-transparent rounded-full" />
+        ) : (
+          <>
+            <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
+              {/* Google icon SVG */}
+            </svg>
+            Continue with Google
+          </>
+        )}
+      </button>
+
+      <button
+        onClick={() => handleSocialSignIn('github')}
+        disabled={loading !== null}
+        className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+      >
+        {loading === 'github' ? (
+          <div className="animate-spin h-4 w-4 border-2 border-gray-600 border-t-transparent rounded-full" />
+        ) : (
+          <>
+            <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
+              {/* GitHub icon SVG */}
+            </svg>
+            Continue with GitHub
+          </>
+        )}
+      </button>
+    </div>
+  )
+}
+```
+
+## Database Operations
+
+### Basic CRUD Operations
+```typescript
+// lib/api/posts.ts
+import { supabase } from '@/lib/supabase'
+import type { Database, Tables } from '@/types/supabase'
+
+type Post = Tables<'posts'>
+type PostInsert = Database['public']['Tables']['posts']['Insert']
+type PostUpdate = Database['public']['Tables']['posts']['Update']
+
+export class PostsAPI {
+  // Get all posts with optional filtering
+  static async getPosts({
+    page = 1,
+    limit = 10,
+    published,
+    authorId,
+  }: {
+    page?: number
+    limit?: number
+    published?: boolean
+    authorId?: string
+  } = {}) {
+    let query = supabase
+      .from('posts')
+      .select(`
+        *,
+        author:users(id, name, email, avatar_url),
+        comments:comments(count)
+      `)
+      .order('created_at', { ascending: false })
+
+    if (published !== undefined) {
+      query = query.eq('published', published)
+    }
+
+    if (authorId) {
+      query = query.eq('author_id', authorId)
+    }
+
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    const { data, error, count } = await query
+      .range(from, to)
+      .limit(limit)
+
+    if (error) throw error
+
+    return {
+      data: data || [],
+      count: count || 0,
+      page,
+      totalPages: Math.ceil((count || 0) / limit),
+    }
+  }
+
+  // Get single post with related data
+  static async getPost(id: string) {
+    const { data, error } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        author:users(id, name, email, avatar_url),
+        comments(
+          id,
+          content,
+          created_at,
+          author:users(id, name, avatar_url),
+          replies:comments(
+            id,
+            content,
+            created_at,
+            author:users(id, name, avatar_url)
+          )
+        )
+      `)
+      .eq('id', id)
+      .single()
+
+    if (error) throw error
+    return data
+  }
+
+  // Create new post
+  static async createPost(post: PostInsert) {
+    const { data, error } = await supabase
+      .from('posts')
+      .insert(post)
+      .select(`
+        *,
+        author:users(id, name, email, avatar_url)
+      `)
+      .single()
+
+    if (error) throw error
+    return data
+  }
+
+  // Update post
+  static async updatePost(id: string, updates: PostUpdate) {
+    const { data, error } = await supabase
+      .from('posts')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        author:users(id, name, email, avatar_url)
+      `)
+      .single()
+
+    if (error) throw error
+    return data
+  }
+
+  // Delete post
+  static async deletePost(id: string) {
+    const { error } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  // Search posts
+  static async searchPosts(query: string, limit = 10) {
+    const { data, error } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        author:users(id, name, email, avatar_url)
+      `)
+      .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
+      .eq('published', true)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) throw error
+    return data || []
+  }
+}
+```
+
+### Advanced Queries with RLS
+```typescript
+// lib/api/secure-posts.ts
+import { supabase } from '@/lib/supabase'
+
+export class SecurePostsAPI {
+  // Get user's own posts (respects RLS)
+  static async getMyPosts() {
+    const { data, error } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        comments(count)
+      `)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return data || []
+  }
+
+  // Get posts with user-specific data
+  static async getPostsWithUserData() {
+    const { data, error } = await supabase
+      .from('posts_with_author')  // Using a view
+      .select('*')
+      .eq('published', true)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return data || []
+  }
+
+  // Call PostgreSQL function
+  static async getPostStats(postId: string) {
+    const { data, error } = await supabase
+      .rpc('get_post_stats', { post_id: postId })
+
+    if (error) throw error
+    return data
+  }
+
+  // Batch operations with transaction
+  static async createPostWithTags(
+    post: Database['public']['Tables']['posts']['Insert'],
+    tagIds: string[]
+  ) {
+    const { data: newPost, error: postError } = await supabase
+      .from('posts')
+      .insert(post)
+      .select()
+      .single()
+
+    if (postError) throw postError
+
+    if (tagIds.length > 0) {
+      const postTags = tagIds.map(tagId => ({
+        post_id: newPost.id,
+        tag_id: tagId,
+      }))
+
+      const { error: tagsError } = await supabase
+        .from('post_tags')
+        .insert(postTags)
+
+      if (tagsError) throw tagsError
+    }
+
+    return newPost
+  }
+}
+```
+
+## Real-time Subscriptions
+
+### Real-time Hooks
+```typescript
+// hooks/use-realtime-posts.ts
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import type { Tables } from '@/types/supabase'
+
+type Post = Tables<'posts'>
+
+export function useRealtimePosts() {
+  const [posts, setPosts] = useState<Post[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // Initial fetch
+    const fetchPosts = async () => {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('published', true)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching posts:', error)
+      } else {
+        setPosts(data || [])
+      }
+      setLoading(false)
+    }
+
+    fetchPosts()
+
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('posts-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'posts',
+          filter: 'published=eq.true',
+        },
+        (payload) => {
+          console.log('New post:', payload.new)
+          setPosts(current => [payload.new as Post, ...current])
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'posts',
+        },
+        (payload) => {
+          console.log('Updated post:', payload.new)
+          setPosts(current =>
+            current.map(post =>
+              post.id === payload.new.id ? (payload.new as Post) : post
+            )
+          )
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'posts',
+        },
+        (payload) => {
+          console.log('Deleted post:', payload.old)
+          setPosts(current =>
+            current.filter(post => post.id !== payload.old.id)
+          )
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  return { posts, loading }
+}
+
+// Real-time comments for a specific post
+export function useRealtimeComments(postId: string) {
+  const [comments, setComments] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!postId) return
+
+    const fetchComments = async () => {
+      const { data, error } = await supabase
+        .from('comments')
+        .select(`
+          *,
+          author:users(id, name, avatar_url)
+        `)
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        console.error('Error fetching comments:', error)
+      } else {
+        setComments(data || [])
+      }
+      setLoading(false)
+    }
+
+    fetchComments()
+
+    const channel = supabase
+      .channel(`comments-${postId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'comments',
+          filter: `post_id=eq.${postId}`,
+        },
+        async (payload) => {
+          // Fetch the new comment with author data
+          const { data } = await supabase
+            .from('comments')
+            .select(`
+              *,
+              author:users(id, name, avatar_url)
+            `)
+            .eq('id', payload.new.id)
+            .single()
+
+          if (data) {
+            setComments(current => [...current, data])
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [postId])
+
+  return { comments, loading }
+}
+```
+
+### Real-time Chat
+```tsx
+// components/chat/real-time-chat.tsx
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/providers/auth-provider'
+
+interface Message {
+  id: string
+  content: string
+  user_id: string
+  created_at: string
+  user: {
+    name: string
+    avatar_url?: string
+  }
+}
+
+export function RealtimeChat({ roomId }: { roomId: string }) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [newMessage, setNewMessage] = useState('')
+  const [loading, setLoading] = useState(true)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const { user } = useAuth()
+
+  useEffect(() => {
+    // Fetch existing messages
+    const fetchMessages = async () => {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select(`
+          *,
+          user:users(name, avatar_url)
+        `)
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true })
+        .limit(50)
+
+      if (error) {
+        console.error('Error fetching messages:', error)
+      } else {
+        setMessages(data || [])
+      }
+      setLoading(false)
+    }
+
+    fetchMessages()
+
+    // Subscribe to new messages
+    const channel = supabase
+      .channel(`chat-${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `room_id=eq.${roomId}`,
+        },
+        async (payload) => {
+          const { data } = await supabase
+            .from('chat_messages')
+            .select(`
+              *,
+              user:users(name, avatar_url)
+            `)
+            .eq('id', payload.new.id)
+            .single()
+
+          if (data) {
+            setMessages(current => [...current, data])
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [roomId])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const sendMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newMessage.trim() || !user) return
+
+    const { error } = await supabase
+      .from('chat_messages')
+      .insert({
+        content: newMessage.trim(),
+        room_id: roomId,
+        user_id: user.id,
+      })
+
+    if (error) {
+      console.error('Error sending message:', error)
+    } else {
+      setNewMessage('')
+    }
+  }
+
+  if (loading) {
+    return <div className="flex justify-center py-4">Loading chat...</div>
+  }
+
+  return (
+    <div className="flex flex-col h-96 border rounded-lg">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className={`flex ${
+              message.user_id === user?.id ? 'justify-end' : 'justify-start'
+            }`}
+          >
+            <div
+              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                message.user_id === user?.id
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-900'
+              }`}
+            >
+              {message.user_id !== user?.id && (
+                <div className="text-xs font-medium mb-1">
+                  {message.user.name}
+                </div>
+              )}
+              <div>{message.content}</div>
+              <div className="text-xs opacity-75 mt-1">
+                {new Date(message.created_at).toLocaleTimeString()}
+              </div>
+            </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <form onSubmit={sendMessage} className="border-t p-4">
+        <div className="flex space-x-2">
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            type="submit"
+            disabled={!newMessage.trim()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+          >
+            Send
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+```
+
+## Storage Operations
+
+### File Upload Hook
+```typescript
+// hooks/use-file-upload.ts
+import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
+
+interface UploadOptions {
+  bucket: string
+  folder?: string
+  allowedTypes?: string[]
+  maxSize?: number // in bytes
+}
+
+export function useFileUpload(options: UploadOptions) {
+  const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(0)
+
+  const upload = async (file: File): Promise<string> => {
+    if (options.allowedTypes && !options.allowedTypes.includes(file.type)) {
+      throw new Error(`File type ${file.type} is not allowed`)
+    }
+
+    if (options.maxSize && file.size > options.maxSize) {
+      throw new Error(`File size ${file.size} exceeds limit of ${options.maxSize}`)
+    }
+
+    setUploading(true)
+    setProgress(0)
+
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Math.random()}.${fileExt}`
+      const filePath = options.folder ? `${options.folder}/${fileName}` : fileName
+
+      const { data, error } = await supabase.storage
+        .from(options.bucket)
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        })
+
+      if (error) throw error
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from(options.bucket)
+        .getPublicUrl(data.path)
+
+      return publicUrl
+    } finally {
+      setUploading(false)
+      setProgress(0)
+    }
+  }
+
+  const remove = async (path: string) => {
+    const { error } = await supabase.storage
+      .from(options.bucket)
+      .remove([path])
+
+    if (error) throw error
+  }
+
+  return {
+    upload,
+    remove,
+    uploading,
+    progress,
+  }
+}
+```
+
+### Avatar Upload Component
+```tsx
+// components/avatar-upload.tsx
+'use client'
+
+import { useState } from 'react'
+import { useFileUpload } from '@/hooks/use-file-upload'
+import { useAuth } from '@/providers/auth-provider'
+import { supabase } from '@/lib/supabase'
+
+export function AvatarUpload() {
+  const [preview, setPreview] = useState<string | null>(null)
+  const { user } = useAuth()
+  const { upload, uploading } = useFileUpload({
+    bucket: 'avatars',
+    folder: 'users',
+    allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    maxSize: 2 * 1024 * 1024, // 2MB
+  })
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (e) => setPreview(e.target?.result as string)
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+
+    try {
+      const publicUrl = await upload(file)
+
+      // Update user profile with new avatar URL
+      const { error } = await supabase
+        .from('users')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      console.log('Avatar updated successfully')
+    } catch (error) {
+      console.error('Error uploading avatar:', error)
+    }
+  }
+
+  return (
+    <div className="flex items-center space-x-4">
+      <div className="relative">
+        <img
+          src={preview || user?.user_metadata?.avatar_url || '/default-avatar.png'}
+          alt="Avatar"
+          className="w-20 h-20 rounded-full object-cover"
+        />
+        {uploading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-full">
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent" />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleUpload}
+          disabled={uploading}
+          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          PNG, JPG, WebP up to 2MB
+        </p>
+      </div>
+    </div>
+  )
+}
+```
+
+## Best Practices
+
+### Row Level Security (RLS)
+```sql
+-- Enable RLS on tables
+ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
+
+-- Posts policies
+CREATE POLICY "Users can view published posts" ON posts
+  FOR SELECT USING (published = true);
+
+CREATE POLICY "Users can view own posts" ON posts
+  FOR SELECT USING (auth.uid() = author_id);
+
+CREATE POLICY "Users can create posts" ON posts
+  FOR INSERT WITH CHECK (auth.uid() = author_id);
+
+CREATE POLICY "Users can update own posts" ON posts
+  FOR UPDATE USING (auth.uid() = author_id);
+
+CREATE POLICY "Users can delete own posts" ON posts
+  FOR DELETE USING (auth.uid() = author_id);
+
+-- Comments policies
+CREATE POLICY "Users can view comments on published posts" ON comments
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM posts 
+      WHERE posts.id = comments.post_id 
+      AND posts.published = true
+    )
+  );
+
+CREATE POLICY "Users can create comments" ON comments
+  FOR INSERT WITH CHECK (auth.uid() = author_id);
+```
+
+### Error Handling
+```typescript
+// lib/supabase-error-handler.ts
+import { PostgrestError } from '@supabase/supabase-js'
+
+export class SupabaseError extends Error {
+  code: string
+  details: string
+  hint: string
+
+  constructor(error: PostgrestError) {
+    super(error.message)
+    this.code = error.code
+    this.details = error.details
+    this.hint = error.hint
+    this.name = 'SupabaseError'
+  }
+
+  static fromPostgrestError(error: PostgrestError): SupabaseError {
+    return new SupabaseError(error)
+  }
+
+  getUserFriendlyMessage(): string {
+    switch (this.code) {
+      case '23505':
+        return 'This item already exists. Please try with different information.'
+      case '23503':
+        return 'Cannot perform this action due to existing dependencies.'
+      case 'PGRST116':
+        return 'The requested item was not found.'
+      default:
+        return 'An unexpected error occurred. Please try again.'
+    }
+  }
+}
+
+// Usage
+export async function createPostSafely(post: PostInsert) {
+  const { data, error } = await supabase
+    .from('posts')
+    .insert(post)
+    .select()
+    .single()
+
+  if (error) {
+    throw SupabaseError.fromPostgrestError(error)
+  }
+
+  return data
+}
+```
+
+## Performance Optimization
+
+1. **Query Optimization**: Use select() to fetch only needed columns
+2. **Indexing**: Create database indexes for frequently queried columns
+3. **Real-time Filtering**: Use filters in real-time subscriptions to reduce data transfer
+4. **Connection Pooling**: Use connection pooling for server-side operations
+5. **Caching**: Implement client-side caching with React Query or SWR
+6. **Batch Operations**: Group multiple operations when possible
+7. **RLS Optimization**: Write efficient RLS policies to avoid performance issues
+8. **Storage CDN**: Use Supabase CDN for file storage and delivery
+9. **Edge Functions**: Use edge functions for compute-heavy operations
+10. **Monitoring**: Monitor database performance and query statistics

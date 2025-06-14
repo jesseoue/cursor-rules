@@ -1,0 +1,907 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Trigger.dev Development Rules
+
+## Core Setup
+
+### Installation & Configuration
+```typescript
+// lib/trigger.ts
+import { TriggerClient } from "@trigger.dev/sdk"
+
+export const client = new TriggerClient({
+  id: "my-app",
+  apiKey: process.env.TRIGGER_SECRET_KEY!,
+  apiUrl: process.env.TRIGGER_API_URL,
+  verbose: process.env.NODE_ENV === "development",
+})
+```
+
+### API Route Handler
+```typescript
+// app/api/trigger/route.ts
+import { createAppRoute } from "@trigger.dev/nextjs"
+import { client } from "@/lib/trigger"
+
+// Import all your job files
+import "@/jobs"
+
+const { handler, config } = createAppRoute(client)
+
+export { handler as POST, config }
+```
+
+### Environment Configuration
+```bash
+# .env.local
+TRIGGER_SECRET_KEY=your_secret_key_here
+TRIGGER_API_URL=https://api.trigger.dev
+```
+
+## Basic Jobs
+
+### Simple Background Job
+```typescript
+// jobs/send-welcome-email.ts
+import { client } from "@/lib/trigger"
+import { eventTrigger } from "@trigger.dev/sdk"
+
+client.defineJob({
+  id: "send-welcome-email",
+  name: "Send Welcome Email",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.created",
+  }),
+  run: async (payload, io, ctx) => {
+    const { user } = payload
+
+    await io.logger.info("Starting welcome email job", { userId: user.id })
+
+    // Send welcome email
+    const emailResult = await io.sendEmail("send-email", {
+      to: user.email,
+      subject: "Welcome to our platform!",
+      html: `
+        <h1>Welcome, ${user.name}!</h1>
+        <p>Thanks for joining our platform. We're excited to have you!</p>
+        <p>Get started by exploring our features.</p>
+      `,
+    })
+
+    await io.logger.info("Welcome email sent successfully", { 
+      userId: user.id,
+      emailId: emailResult.id 
+    })
+
+    return {
+      success: true,
+      emailSent: true,
+      userId: user.id,
+    }
+  },
+})
+```
+
+### Scheduled Job (Cron)
+```typescript
+// jobs/daily-cleanup.ts
+import { client } from "@/lib/trigger"
+import { cronTrigger } from "@trigger.dev/sdk"
+
+client.defineJob({
+  id: "daily-cleanup",
+  name: "Daily Database Cleanup",
+  version: "1.0.0",
+  trigger: cronTrigger({
+    cron: "0 2 * * *", // Every day at 2 AM
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Starting daily cleanup job")
+
+    // Clean up expired sessions
+    const sessionsDeleted = await io.runTask("cleanup-sessions", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      
+      const result = await prisma.session.deleteMany({
+        where: {
+          expiresAt: {
+            lt: new Date(),
+          },
+        },
+      })
+      
+      return result.count
+    })
+
+    // Clean up expired tokens
+    const tokensDeleted = await io.runTask("cleanup-tokens", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      
+      const result = await prisma.verificationToken.deleteMany({
+        where: {
+          expiresAt: {
+            lt: new Date(),
+          },
+        },
+      })
+      
+      return result.count
+    })
+
+    // Clean up old logs (older than 30 days)
+    const logsDeleted = await io.runTask("cleanup-logs", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      
+      const result = await prisma.log.deleteMany({
+        where: {
+          createdAt: {
+            lt: thirtyDaysAgo,
+          },
+        },
+      })
+      
+      return result.count
+    })
+
+    await io.logger.info("Daily cleanup completed", {
+      sessionsDeleted,
+      tokensDeleted,
+      logsDeleted,
+    })
+
+    return {
+      success: true,
+      sessionsDeleted,
+      tokensDeleted,
+      logsDeleted,
+      cleanupDate: new Date().toISOString(),
+    }
+  },
+})
+```
+
+## API Integrations
+
+### Stripe Payment Processing
+```typescript
+// jobs/process-stripe-payment.ts
+import { client } from "@/lib/trigger"
+import { eventTrigger } from "@trigger.dev/sdk"
+
+client.defineJob({
+  id: "process-stripe-payment",
+  name: "Process Stripe Payment",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "payment.initiated",
+  }),
+  integrations: {
+    stripe: new StripeIntegration({
+      id: "stripe",
+      apiKey: process.env.STRIPE_SECRET_KEY!,
+    }),
+  },
+  run: async (payload, io, ctx) => {
+    const { paymentIntentId, userId, amount } = payload
+
+    await io.logger.info("Processing Stripe payment", { 
+      paymentIntentId, 
+      userId, 
+      amount 
+    })
+
+    // Confirm the payment intent
+    const paymentIntent = await io.stripe.paymentIntents.confirm(
+      "confirm-payment",
+      paymentIntentId
+    )
+
+    if (paymentIntent.status === "succeeded") {
+      // Update database
+      const payment = await io.runTask("update-payment-db", async () => {
+        const { prisma } = await import("@/lib/prisma")
+        
+        return await prisma.payment.create({
+          data: {
+            userId,
+            stripePaymentIntentId: paymentIntentId,
+            amount,
+            status: "completed",
+            completedAt: new Date(),
+          },
+        })
+      })
+
+      // Send success email
+      await io.sendEvent("send-payment-success-email", {
+        name: "payment.success",
+        payload: {
+          userId,
+          paymentId: payment.id,
+          amount,
+        },
+      })
+
+      // Activate user subscription
+      await io.sendEvent("activate-subscription", {
+        name: "subscription.activate",
+        payload: {
+          userId,
+          paymentId: payment.id,
+        },
+      })
+
+      return {
+        success: true,
+        paymentId: payment.id,
+        stripeStatus: paymentIntent.status,
+      }
+    } else {
+      // Handle failed payment
+      await io.logger.error("Payment failed", {
+        paymentIntentId,
+        status: paymentIntent.status,
+      })
+
+      await io.sendEvent("send-payment-failed-email", {
+        name: "payment.failed",
+        payload: {
+          userId,
+          paymentIntentId,
+          reason: paymentIntent.last_payment_error?.message,
+        },
+      })
+
+      return {
+        success: false,
+        stripeStatus: paymentIntent.status,
+        error: paymentIntent.last_payment_error?.message,
+      }
+    }
+  },
+})
+```
+
+### OpenAI Integration
+```typescript
+// jobs/generate-content.ts
+import { client } from "@/lib/trigger"
+import { eventTrigger } from "@trigger.dev/sdk"
+import { OpenAIIntegration } from "@trigger.dev/openai"
+
+const openai = new OpenAIIntegration({
+  id: "openai",
+  apiKey: process.env.OPENAI_API_KEY!,
+})
+
+client.defineJob({
+  id: "generate-content",
+  name: "Generate AI Content",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "content.generate",
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const { type, prompt, userId, contentId } = payload
+
+    await io.logger.info("Generating AI content", { type, userId, contentId })
+
+    let systemPrompt = ""
+    let maxTokens = 1000
+
+    switch (type) {
+      case "blog-post":
+        systemPrompt = "You are a professional blog writer. Create engaging, well-structured blog posts."
+        maxTokens = 2000
+        break
+      case "product-description":
+        systemPrompt = "You are a marketing copywriter. Create compelling product descriptions that sell."
+        maxTokens = 500
+        break
+      case "social-media":
+        systemPrompt = "You are a social media manager. Create engaging posts for social platforms."
+        maxTokens = 280
+        break
+      default:
+        systemPrompt = "You are a helpful AI assistant. Provide clear and helpful responses."
+    }
+
+    const completion = await io.openai.chat.completions.create("generate-text", {
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      max_tokens: maxTokens,
+      temperature: 0.7,
+    })
+
+    const generatedContent = completion.choices[0].message.content
+
+    // Save to database
+    const savedContent = await io.runTask("save-content", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      
+      return await prisma.content.update({
+        where: { id: contentId },
+        data: {
+          content: generatedContent,
+          status: "generated",
+          generatedAt: new Date(),
+        },
+      })
+    })
+
+    // Notify user
+    await io.sendEvent("notify-content-ready", {
+      name: "content.ready",
+      payload: {
+        userId,
+        contentId,
+        type,
+      },
+    })
+
+    return {
+      success: true,
+      contentId,
+      tokensUsed: completion.usage?.total_tokens,
+      content: generatedContent,
+    }
+  },
+})
+```
+
+## Webhook Processing
+
+### GitHub Webhook Handler
+```typescript
+// jobs/process-github-webhook.ts
+import { client } from "@/lib/trigger"
+import { webhookTrigger } from "@trigger.dev/sdk"
+
+client.defineJob({
+  id: "process-github-webhook",
+  name: "Process GitHub Webhook",
+  version: "1.0.0",
+  trigger: webhookTrigger({
+    service: "github",
+  }),
+  run: async (payload, io, ctx) => {
+    const { event, repository } = payload
+
+    await io.logger.info("Processing GitHub webhook", { 
+      event: event.type,
+      repository: repository.name 
+    })
+
+    switch (event.type) {
+      case "push":
+        return await handlePushEvent(payload, io)
+      
+      case "pull_request":
+        return await handlePullRequestEvent(payload, io)
+      
+      case "release":
+        return await handleReleaseEvent(payload, io)
+      
+      default:
+        await io.logger.info("Unhandled GitHub event", { eventType: event.type })
+        return { handled: false, eventType: event.type }
+    }
+  },
+})
+
+async function handlePushEvent(payload: any, io: any) {
+  const { commits, repository, pusher } = payload
+
+  // Run tests
+  const testResults = await io.runTask("run-tests", async () => {
+    // Trigger CI/CD pipeline
+    return await triggerCIPipeline(repository.full_name, payload.after)
+  })
+
+  // Send notification to Slack
+  await io.slack.postMessage("notify-team", {
+    channel: "#deployments",
+    text: `🚀 New push to ${repository.name} by ${pusher.name}`,
+    attachments: [
+      {
+        color: "good",
+        fields: [
+          {
+            title: "Commits",
+            value: commits.length.toString(),
+            short: true,
+          },
+          {
+            title: "Branch",
+            value: payload.ref.replace("refs/heads/", ""),
+            short: true,
+          },
+        ],
+      },
+    ],
+  })
+
+  return {
+    handled: true,
+    eventType: "push",
+    testResults,
+  }
+}
+
+async function handlePullRequestEvent(payload: any, io: any) {
+  const { action, pull_request } = payload
+
+  if (action === "opened") {
+    // Run code analysis
+    const analysis = await io.runTask("analyze-code", async () => {
+      return await analyzeCodeChanges(pull_request.diff_url)
+    })
+
+    // Post review comment
+    await io.github.issues.createComment("post-review", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      issue_number: pull_request.number,
+      body: `🤖 Automated code analysis completed:\n\n${analysis.summary}`,
+    })
+  }
+
+  return {
+    handled: true,
+    eventType: "pull_request",
+    action,
+  }
+}
+
+async function handleReleaseEvent(payload: any, io: any) {
+  const { action, release } = payload
+
+  if (action === "published") {
+    // Send release notifications
+    await io.sendEvent("notify-release", {
+      name: "release.published",
+      payload: {
+        repository: payload.repository.name,
+        version: release.tag_name,
+        notes: release.body,
+      },
+    })
+
+    // Update documentation
+    await io.runTask("update-docs", async () => {
+      return await updateDocumentation(release.tag_name, release.body)
+    })
+  }
+
+  return {
+    handled: true,
+    eventType: "release",
+    action,
+  }
+}
+```
+
+## Complex Workflows
+
+### Multi-Step Onboarding Flow
+```typescript
+// jobs/user-onboarding-flow.ts
+import { client } from "@/lib/trigger"
+import { eventTrigger } from "@trigger.dev/sdk"
+
+client.defineJob({
+  id: "user-onboarding-flow",
+  name: "User Onboarding Flow",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.registered",
+  }),
+  run: async (payload, io, ctx) => {
+    const { userId, email, name } = payload
+
+    await io.logger.info("Starting onboarding flow", { userId })
+
+    // Step 1: Send welcome email immediately
+    await io.sendEmail("welcome-email", {
+      to: email,
+      subject: "Welcome to our platform!",
+      template: "welcome",
+      data: { name },
+    })
+
+    // Step 2: Wait for email verification
+    const emailVerified = await io.waitForEvent("wait-email-verification", {
+      event: "email.verified",
+      timeout: "7d",
+      filter: {
+        userId: [userId],
+      },
+    })
+
+    if (!emailVerified) {
+      // Send reminder email
+      await io.sendEmail("verification-reminder", {
+        to: email,
+        subject: "Please verify your email",
+        template: "verification-reminder",
+        data: { name },
+      })
+      
+      return { completed: false, reason: "Email not verified" }
+    }
+
+    // Step 3: Create user profile
+    const profile = await io.runTask("create-profile", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      
+      return await prisma.userProfile.create({
+        data: {
+          userId,
+          onboardingStep: "profile_created",
+          createdAt: new Date(),
+        },
+      })
+    })
+
+    // Step 4: Wait 1 day, then send onboarding tips
+    await io.wait("wait-1-day", 24 * 60 * 60 * 1000)
+
+    await io.sendEmail("onboarding-tips", {
+      to: email,
+      subject: "Getting started tips",
+      template: "onboarding-tips",
+      data: { name },
+    })
+
+    // Step 5: Wait for first action
+    const firstAction = await io.waitForEvent("wait-first-action", {
+      event: "user.first_action",
+      timeout: "7d",
+      filter: {
+        userId: [userId],
+      },
+    })
+
+    if (firstAction) {
+      // Send congratulations email
+      await io.sendEmail("first-action-congrats", {
+        to: email,
+        subject: "Great job! 🎉",
+        template: "first-action-congrats",
+        data: { name, action: firstAction.action },
+      })
+
+      // Award welcome points
+      await io.runTask("award-welcome-points", async () => {
+        const { prisma } = await import("@/lib/prisma")
+        
+        return await prisma.userPoints.create({
+          data: {
+            userId,
+            points: 100,
+            reason: "welcome_bonus",
+            createdAt: new Date(),
+          },
+        })
+      })
+    } else {
+      // Send re-engagement email
+      await io.sendEmail("re-engagement", {
+        to: email,
+        subject: "We miss you! Come back and explore",
+        template: "re-engagement",
+        data: { name },
+      })
+    }
+
+    // Step 6: Complete onboarding
+    await io.runTask("complete-onboarding", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      
+      return await prisma.userProfile.update({
+        where: { userId },
+        data: {
+          onboardingStep: "completed",
+          onboardingCompletedAt: new Date(),
+        },
+      })
+    })
+
+    return {
+      completed: true,
+      userId,
+      emailVerified: !!emailVerified,
+      firstActionCompleted: !!firstAction,
+    }
+  },
+})
+```
+
+## Error Handling & Retries
+
+### Robust Job with Retry Logic
+```typescript
+// jobs/process-order.ts
+import { client } from "@/lib/trigger"
+import { eventTrigger, retry } from "@trigger.dev/sdk"
+
+client.defineJob({
+  id: "process-order",
+  name: "Process Order",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "order.created",
+  }),
+  run: async (payload, io, ctx) => {
+    const { orderId, userId, items } = payload
+
+    await io.logger.info("Processing order", { orderId, userId })
+
+    try {
+      // Step 1: Validate inventory
+      const inventoryCheck = await retry.exponentialBackoff(
+        () => io.runTask("check-inventory", async () => {
+          const { prisma } = await import("@/lib/prisma")
+          
+          for (const item of items) {
+            const product = await prisma.product.findUnique({
+              where: { id: item.productId },
+            })
+            
+            if (!product || product.stock < item.quantity) {
+              throw new Error(`Insufficient stock for product ${item.productId}`)
+            }
+          }
+          
+          return { sufficient: true }
+        }),
+        {
+          maxAttempts: 3,
+          initialDelayInMs: 1000,
+          maxDelayInMs: 10000,
+        }
+      )
+
+      // Step 2: Reserve inventory
+      const reservation = await io.runTask("reserve-inventory", async () => {
+        const { prisma } = await import("@/lib/prisma")
+        
+        const updates = await Promise.all(
+          items.map(item =>
+            prisma.product.update({
+              where: { id: item.productId },
+              data: {
+                stock: {
+                  decrement: item.quantity,
+                },
+                reserved: {
+                  increment: item.quantity,
+                },
+              },
+            })
+          )
+        )
+        
+        return updates
+      })
+
+      // Step 3: Process payment
+      const payment = await retry.exponentialBackoff(
+        () => io.runTask("process-payment", async () => {
+          // Simulate payment processing
+          const success = Math.random() > 0.1 // 90% success rate
+          
+          if (!success) {
+            throw new Error("Payment processing failed")
+          }
+          
+          return {
+            paymentId: `payment_${Date.now()}`,
+            status: "succeeded",
+          }
+        }),
+        {
+          maxAttempts: 3,
+          initialDelayInMs: 2000,
+          maxDelayInMs: 20000,
+        }
+      )
+
+      // Step 4: Confirm order
+      const order = await io.runTask("confirm-order", async () => {
+        const { prisma } = await import("@/lib/prisma")
+        
+        return await prisma.order.update({
+          where: { id: orderId },
+          data: {
+            status: "confirmed",
+            paymentId: payment.paymentId,
+            confirmedAt: new Date(),
+          },
+        })
+      })
+
+      // Step 5: Send confirmation email
+      await io.sendEmail("order-confirmation", {
+        to: payload.userEmail,
+        subject: "Order confirmed!",
+        template: "order-confirmation",
+        data: {
+          orderId,
+          items,
+          total: payload.total,
+        },
+      })
+
+      // Step 6: Schedule fulfillment
+      await io.sendEvent("schedule-fulfillment", {
+        name: "fulfillment.scheduled",
+        payload: { orderId },
+        delay: "1h", // Process fulfillment in 1 hour
+      })
+
+      return {
+        success: true,
+        orderId,
+        paymentId: payment.paymentId,
+      }
+
+    } catch (error) {
+      await io.logger.error("Order processing failed", {
+        orderId,
+        error: error.message,
+      })
+
+      // Rollback inventory reservation
+      await io.runTask("rollback-inventory", async () => {
+        const { prisma } = await import("@/lib/prisma")
+        
+        await Promise.all(
+          items.map(item =>
+            prisma.product.update({
+              where: { id: item.productId },
+              data: {
+                stock: {
+                  increment: item.quantity,
+                },
+                reserved: {
+                  decrement: item.quantity,
+                },
+              },
+            })
+          )
+        )
+      })
+
+      // Update order status
+      await io.runTask("mark-order-failed", async () => {
+        const { prisma } = await import("@/lib/prisma")
+        
+        return await prisma.order.update({
+          where: { id: orderId },
+          data: {
+            status: "failed",
+            failureReason: error.message,
+            failedAt: new Date(),
+          },
+        })
+      })
+
+      // Send failure notification
+      await io.sendEmail("order-failed", {
+        to: payload.userEmail,
+        subject: "Order processing failed",
+        template: "order-failed",
+        data: {
+          orderId,
+          reason: error.message,
+        },
+      })
+
+      throw error // Re-throw to mark job as failed
+    }
+  },
+})
+```
+
+## Triggering Jobs
+
+### From API Routes
+```typescript
+// app/api/users/route.ts
+import { NextRequest, NextResponse } from "next/server"
+import { client } from "@/lib/trigger"
+
+export async function POST(request: NextRequest) {
+  const userData = await request.json()
+  
+  // Create user in database
+  const user = await createUser(userData)
+  
+  // Trigger welcome job
+  await client.sendEvent({
+    name: "user.created",
+    payload: {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+    },
+  })
+  
+  return NextResponse.json(user)
+}
+```
+
+### From Client Components
+```typescript
+// components/order-form.tsx
+"use client"
+
+import { useState } from "react"
+
+export function OrderForm() {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (orderData: any) => {
+    setIsSubmitting(true)
+    
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData),
+      })
+      
+      if (response.ok) {
+        const order = await response.json()
+        console.log("Order created:", order.id)
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={(e) => {
+      e.preventDefault()
+      handleSubmit({ items: [], total: 99.99 })
+    }}>
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? "Processing..." : "Place Order"}
+      </button>
+    </form>
+  )
+}
+```
+
+## Best Practices
+
+1. **Job Versioning**: Always version your jobs for safe deployments
+2. **Idempotency**: Make jobs idempotent to handle retries safely
+3. **Error Handling**: Use try-catch blocks and proper error logging
+4. **Task Decomposition**: Break complex jobs into smaller, focused tasks
+5. **Timeout Configuration**: Set appropriate timeouts for external API calls
+6. **Retry Strategies**: Use exponential backoff for transient failures
+7. **Event Filtering**: Use filters to ensure jobs process relevant events only
+8. **Resource Cleanup**: Always clean up resources in case of failures
+9. **Monitoring**: Add comprehensive logging for debugging and monitoring
+10. **Testing**: Test jobs locally using the Trigger.dev CLI and testing tools

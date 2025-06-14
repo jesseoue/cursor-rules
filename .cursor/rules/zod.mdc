@@ -1,0 +1,517 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Zod Schema Validation Rules
+
+## Core Principles
+
+### Schema Definition
+```typescript
+import { z } from 'zod'
+
+// Basic schemas
+const UserSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1, 'Name is required').max(100),
+  email: z.string().email('Invalid email format'),
+  age: z.number().int().min(0).max(120),
+  isActive: z.boolean().default(true),
+  createdAt: z.date().default(() => new Date()),
+})
+
+// Advanced validation
+const ProductSchema = z.object({
+  name: z.string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(50, 'Name must be less than 50 characters')
+    .regex(/^[a-zA-Z0-9\s]+$/, 'Name can only contain letters, numbers, and spaces'),
+  price: z.number()
+    .positive('Price must be positive')
+    .multipleOf(0.01, 'Price must have at most 2 decimal places'),
+  category: z.enum(['electronics', 'clothing', 'books', 'home'] as const),
+  tags: z.array(z.string()).min(1, 'At least one tag is required').max(10),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+})
+
+// Type inference
+type User = z.infer<typeof UserSchema>
+type Product = z.infer<typeof ProductSchema>
+```
+
+### Custom Validators
+```typescript
+// Custom validation functions
+const passwordSchema = z.string()
+  .min(8, 'Password must be at least 8 characters')
+  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+  .regex(/[0-9]/, 'Password must contain at least one number')
+  .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character')
+
+// Custom refinement
+const RegisterSchema = z.object({
+  email: z.string().email(),
+  password: passwordSchema,
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+})
+
+// Transform data
+const NumberStringSchema = z.string().transform((val) => {
+  const parsed = parseInt(val, 10)
+  if (isNaN(parsed)) throw new Error('Invalid number')
+  return parsed
+})
+
+// Conditional validation
+const ConditionalSchema = z.object({
+  type: z.enum(['personal', 'business']),
+  name: z.string(),
+  businessName: z.string().optional(),
+}).refine((data) => {
+  if (data.type === 'business' && !data.businessName) {
+    return false
+  }
+  return true
+}, {
+  message: 'Business name is required for business accounts',
+  path: ['businessName'],
+})
+```
+
+## API Integration
+
+### API Route Validation
+```typescript
+// app/api/users/route.ts
+import { z } from 'zod'
+import { NextRequest, NextResponse } from 'next/server'
+
+const CreateUserSchema = z.object({
+  name: z.string().min(1).max(100),
+  email: z.string().email(),
+  age: z.number().int().min(0).max(120).optional(),
+})
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const validatedData = CreateUserSchema.parse(body)
+    
+    // Create user with validated data
+    const user = await createUser(validatedData)
+    
+    return NextResponse.json(user, { status: 201 })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', issues: error.issues },
+        { status: 400 }
+      )
+    }
+    
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// Middleware for validation
+export function validateRequest<T>(schema: z.ZodSchema<T>) {
+  return async (request: NextRequest) => {
+    try {
+      const body = await request.json()
+      return schema.parse(body)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new Error(`Validation failed: ${error.message}`)
+      }
+      throw error
+    }
+  }
+}
+```
+
+### Query Parameter Validation
+```typescript
+// Search params validation
+const SearchParamsSchema = z.object({
+  page: z.string().transform(Number).pipe(z.number().int().min(1)).default('1'),
+  limit: z.string().transform(Number).pipe(z.number().int().min(1).max(100)).default('10'),
+  search: z.string().optional(),
+  category: z.enum(['all', 'electronics', 'clothing', 'books']).default('all'),
+  sortBy: z.enum(['name', 'price', 'createdAt']).default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+})
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  
+  try {
+    const params = SearchParamsSchema.parse(Object.fromEntries(searchParams))
+    
+    const products = await getProducts(params)
+    return NextResponse.json(products)
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Invalid query parameters', issues: error.issues },
+        { status: 400 }
+      )
+    }
+    
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+```
+
+## Form Integration
+
+### React Hook Form Integration
+```typescript
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+
+const FormSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email'),
+  message: z.string().min(10, 'Message must be at least 10 characters'),
+})
+
+type FormData = z.infer<typeof FormSchema>
+
+export function ContactForm() {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<FormData>({
+    resolver: zodResolver(FormSchema),
+  })
+
+  const onSubmit = async (data: FormData) => {
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to submit form')
+      }
+      
+      // Handle success
+    } catch (error) {
+      // Handle error
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <div>
+        <input
+          {...register('name')}
+          placeholder="Name"
+        />
+        {errors.name && <span>{errors.name.message}</span>}
+      </div>
+      
+      <div>
+        <input
+          {...register('email')}
+          type="email"
+          placeholder="Email"
+        />
+        {errors.email && <span>{errors.email.message}</span>}
+      </div>
+      
+      <div>
+        <textarea
+          {...register('message')}
+          placeholder="Message"
+        />
+        {errors.message && <span>{errors.message.message}</span>}
+      </div>
+      
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? 'Submitting...' : 'Submit'}
+      </button>
+    </form>
+  )
+}
+```
+
+### Server Actions Integration
+```typescript
+// app/actions/user.ts
+'use server'
+
+import { z } from 'zod'
+import { redirect } from 'next/navigation'
+
+const CreateUserSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email'),
+})
+
+export async function createUser(formData: FormData) {
+  const result = CreateUserSchema.safeParse({
+    name: formData.get('name'),
+    email: formData.get('email'),
+  })
+
+  if (!result.success) {
+    return {
+      error: 'Validation failed',
+      issues: result.error.issues,
+    }
+  }
+
+  try {
+    const user = await db.user.create({
+      data: result.data,
+    })
+    
+    redirect(`/users/${user.id}`)
+  } catch (error) {
+    return {
+      error: 'Failed to create user',
+    }
+  }
+}
+
+// Usage in component
+export function CreateUserForm() {
+  return (
+    <form action={createUser}>
+      <input name="name" placeholder="Name" required />
+      <input name="email" type="email" placeholder="Email" required />
+      <button type="submit">Create User</button>
+    </form>
+  )
+}
+```
+
+## Database Integration
+
+### Prisma Integration
+```typescript
+// prisma/schema.prisma with Zod validation
+import { z } from 'zod'
+import { Prisma } from '@prisma/client'
+
+// Generated Prisma types with Zod validation
+export const UserCreateSchema = z.object({
+  name: z.string().min(1).max(100),
+  email: z.string().email(),
+  age: z.number().int().min(0).max(120).optional(),
+}) satisfies z.ZodType<Prisma.UserCreateInput>
+
+export const UserUpdateSchema = UserCreateSchema.partial()
+
+export const UserWhereSchema = z.object({
+  id: z.string().uuid().optional(),
+  email: z.string().email().optional(),
+  name: z.string().optional(),
+})
+
+// Database operations with validation
+export async function createUserSafe(data: unknown) {
+  const validatedData = UserCreateSchema.parse(data)
+  return await prisma.user.create({ data: validatedData })
+}
+
+export async function updateUserSafe(id: string, data: unknown) {
+  const validatedData = UserUpdateSchema.parse(data)
+  return await prisma.user.update({
+    where: { id },
+    data: validatedData,
+  })
+}
+```
+
+### Drizzle Integration
+```typescript
+import { z } from 'zod'
+import { users } from './schema'
+import { db } from './db'
+
+// Schema validation matching database schema
+export const InsertUserSchema = z.object({
+  name: z.string().min(1).max(100),
+  email: z.string().email(),
+  age: z.number().int().min(0).max(120).optional(),
+})
+
+export const SelectUserSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  email: z.string().email(),
+  age: z.number().int().nullable(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+})
+
+// Type-safe database operations
+export async function insertUser(data: z.infer<typeof InsertUserSchema>) {
+  const validatedData = InsertUserSchema.parse(data)
+  
+  return await db.insert(users).values(validatedData).returning()
+}
+
+export async function getUserById(id: string) {
+  const user = await db.select().from(users).where(eq(users.id, id)).limit(1)
+  
+  if (user.length === 0) {
+    return null
+  }
+  
+  return SelectUserSchema.parse(user[0])
+}
+```
+
+## Advanced Patterns
+
+### Schema Composition
+```typescript
+// Base schemas
+const BaseEntitySchema = z.object({
+  id: z.string().uuid(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+})
+
+const PersonSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+})
+
+const AddressSchema = z.object({
+  street: z.string().min(1),
+  city: z.string().min(1),
+  state: z.string().min(2).max(2),
+  zipCode: z.string().regex(/^\d{5}(-\d{4})?$/),
+  country: z.string().default('US'),
+})
+
+// Composed schemas
+const UserSchema = BaseEntitySchema.merge(PersonSchema).extend({
+  role: z.enum(['admin', 'user', 'moderator']),
+  isActive: z.boolean().default(true),
+})
+
+const CustomerSchema = UserSchema.extend({
+  address: AddressSchema,
+  orders: z.array(z.string().uuid()).default([]),
+})
+
+// Discriminated unions
+const NotificationSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('email'),
+    to: z.string().email(),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  z.object({
+    type: z.literal('sms'),
+    to: z.string().regex(/^\+?[\d\s-()]+$/),
+    message: z.string().max(160),
+  }),
+  z.object({
+    type: z.literal('push'),
+    deviceId: z.string(),
+    title: z.string(),
+    body: z.string(),
+    data: z.record(z.string(), z.unknown()).optional(),
+  }),
+])
+```
+
+### Error Handling
+```typescript
+// Custom error handler
+export function handleZodError(error: z.ZodError) {
+  const errorMap = error.issues.reduce((acc, issue) => {
+    const path = issue.path.join('.')
+    acc[path] = issue.message
+    return acc
+  }, {} as Record<string, string>)
+  
+  return {
+    message: 'Validation failed',
+    errors: errorMap,
+    issues: error.issues,
+  }
+}
+
+// Safe parsing with custom error handling
+export function safeParseWithErrors<T>(
+  schema: z.ZodSchema<T>,
+  data: unknown
+): { success: true; data: T } | { success: false; error: ReturnType<typeof handleZodError> } {
+  const result = schema.safeParse(data)
+  
+  if (result.success) {
+    return { success: true, data: result.data }
+  }
+  
+  return { success: false, error: handleZodError(result.error) }
+}
+
+// Usage
+const result = safeParseWithErrors(UserSchema, userData)
+if (!result.success) {
+  console.error('Validation failed:', result.error.errors)
+  return NextResponse.json(result.error, { status: 400 })
+}
+
+// Use validated data
+const user = result.data
+```
+
+### Environment Variables Validation
+```typescript
+// lib/env.ts
+import { z } from 'zod'
+
+const EnvSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  DATABASE_URL: z.string().url(),
+  JWT_SECRET: z.string().min(32),
+  STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
+  STRIPE_PUBLISHABLE_KEY: z.string().startsWith('pk_'),
+  RESEND_API_KEY: z.string().optional(),
+  CLOUDFLARE_API_TOKEN: z.string().optional(),
+  PORT: z.string().transform(Number).pipe(z.number().int().min(1).max(65535)).default('3000'),
+})
+
+export const env = EnvSchema.parse(process.env)
+
+// Type-safe environment variables
+export type Env = z.infer<typeof EnvSchema>
+```
+
+## Best Practices
+
+1. **Define schemas close to usage**: Keep validation schemas near the code that uses them
+2. **Use composition**: Build complex schemas from simpler ones using `merge()` and `extend()`
+3. **Validate at boundaries**: Always validate data at API boundaries and user inputs
+4. **Handle errors gracefully**: Provide meaningful error messages and proper error handling
+5. **Use type inference**: Leverage `z.infer<>` for automatic TypeScript type generation
+6. **Custom validators**: Create reusable custom validation functions for complex business rules
+7. **Transform data**: Use `.transform()` to clean and normalize data during validation
+8. **Environment validation**: Validate environment variables at application startup
+9. **Database integration**: Align Zod schemas with database schemas for consistency
+10. **Testing**: Write tests for your schemas to ensure they work as expected

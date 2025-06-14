@@ -1,0 +1,868 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Framer Motion Development Rules
+
+## Core Concepts
+
+### Basic Animations
+```tsx
+import { motion } from 'framer-motion'
+
+// Basic motion component
+export function BasicAnimation() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3 }}
+      className="p-6 bg-white rounded-lg shadow-md"
+    >
+      <h2>Animated Card</h2>
+      <p>This card animates in smoothly.</p>
+    </motion.div>
+  )
+}
+
+// Animation with hover and tap
+export function InteractiveCard() {
+  return (
+    <motion.div
+      initial={{ scale: 1 }}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      transition={{ type: "spring", stiffness: 300 }}
+      className="p-6 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg cursor-pointer"
+    >
+      <h3>Interactive Card</h3>
+      <p>Hover and click me!</p>
+    </motion.div>
+  )
+}
+
+// Staggered animations
+export function StaggeredList({ items }: { items: string[] }) {
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+        delayChildren: 0.2,
+      },
+    },
+  }
+
+  const itemVariants = {
+    hidden: { opacity: 0, x: -20 },
+    visible: { opacity: 1, x: 0 },
+  }
+
+  return (
+    <motion.ul
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-2"
+    >
+      {items.map((item, index) => (
+        <motion.li
+          key={index}
+          variants={itemVariants}
+          className="p-3 bg-gray-100 rounded-md"
+        >
+          {item}
+        </motion.li>
+      ))}
+    </motion.ul>
+  )
+}
+```
+
+### Variants Pattern
+```tsx
+import { motion, Variants } from 'framer-motion'
+
+// Reusable animation variants
+export const fadeInUp: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { 
+    opacity: 1, 
+    y: 0,
+    transition: { duration: 0.6, ease: "easeOut" }
+  }
+}
+
+export const staggerContainer: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.3,
+    },
+  },
+}
+
+export const slideIn: Variants = {
+  hidden: { x: -100, opacity: 0 },
+  visible: {
+    x: 0,
+    opacity: 1,
+    transition: { type: "spring", stiffness: 100, damping: 15 }
+  },
+}
+
+export const scaleIn: Variants = {
+  hidden: { scale: 0, opacity: 0 },
+  visible: {
+    scale: 1,
+    opacity: 1,
+    transition: { type: "spring", stiffness: 200, damping: 20 }
+  },
+}
+
+// Using variants
+export function HeroSection() {
+  return (
+    <motion.div
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+      className="text-center py-20"
+    >
+      <motion.h1
+        variants={fadeInUp}
+        className="text-5xl font-bold mb-6"
+      >
+        Welcome to Our Site
+      </motion.h1>
+      
+      <motion.p
+        variants={fadeInUp}
+        className="text-xl text-gray-600 mb-8"
+      >
+        Create amazing experiences with smooth animations
+      </motion.p>
+      
+      <motion.button
+        variants={scaleIn}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        className="px-8 py-3 bg-blue-600 text-white rounded-lg font-semibold"
+      >
+        Get Started
+      </motion.button>
+    </motion.div>
+  )
+}
+```
+
+## Layout Animations
+
+### Automatic Layout Animations
+```tsx
+import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from 'react'
+
+// Layout animation for expanding cards
+export function ExpandableCards() {
+  const [expanded, setExpanded] = useState<number | null>(null)
+
+  const cards = [
+    { id: 1, title: "Card 1", content: "This is the content for card 1." },
+    { id: 2, title: "Card 2", content: "This is the content for card 2." },
+    { id: 3, title: "Card 3", content: "This is the content for card 3." },
+  ]
+
+  return (
+    <div className="space-y-4">
+      {cards.map((card) => (
+        <motion.div
+          key={card.id}
+          layout
+          onClick={() => setExpanded(expanded === card.id ? null : card.id)}
+          className="border rounded-lg p-4 cursor-pointer bg-white shadow-sm"
+          whileHover={{ scale: 1.02 }}
+          transition={{ layout: { duration: 0.3 } }}
+        >
+          <motion.h3 layout="position" className="font-semibold mb-2">
+            {card.title}
+          </motion.h3>
+          
+          <AnimatePresence>
+            {expanded === card.id && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
+              >
+                <p className="text-gray-600">{card.content}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
+// Shared layout animations
+export function PhotoGallery() {
+  const [selected, setSelected] = useState<string | null>(null)
+
+  const images = [
+    "https://via.placeholder.com/300x200/0066cc/ffffff?text=Image+1",
+    "https://via.placeholder.com/300x200/cc6600/ffffff?text=Image+2",
+    "https://via.placeholder.com/300x200/00cc66/ffffff?text=Image+3",
+  ]
+
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-4">
+        {images.map((src, index) => (
+          <motion.img
+            key={src}
+            src={src}
+            layoutId={`image-${index}`}
+            onClick={() => setSelected(src)}
+            className="rounded-lg cursor-pointer"
+            whileHover={{ scale: 1.05 }}
+          />
+        ))}
+      </div>
+
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50"
+            onClick={() => setSelected(null)}
+          >
+            <motion.img
+              src={selected}
+              layoutId={`image-${images.indexOf(selected)}`}
+              className="max-w-3xl max-h-screen object-contain"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
+```
+
+### List Reordering
+```tsx
+import { motion, Reorder } from 'framer-motion'
+import { useState } from 'react'
+
+interface Task {
+  id: string
+  title: string
+  completed: boolean
+}
+
+export function ReorderableTaskList() {
+  const [tasks, setTasks] = useState<Task[]>([
+    { id: '1', title: 'Learn Framer Motion', completed: false },
+    { id: '2', title: 'Build awesome animations', completed: false },
+    { id: '3', title: 'Ship to production', completed: false },
+  ])
+
+  const toggleTask = (id: string) => {
+    setTasks(tasks.map(task => 
+      task.id === id ? { ...task, completed: !task.completed } : task
+    ))
+  }
+
+  return (
+    <Reorder.Group 
+      axis="y" 
+      values={tasks} 
+      onReorder={setTasks}
+      className="space-y-2"
+    >
+      {tasks.map((task) => (
+        <Reorder.Item
+          key={task.id}
+          value={task}
+          className="p-4 bg-white rounded-lg shadow-sm border cursor-grab active:cursor-grabbing"
+          whileDrag={{ 
+            scale: 1.05, 
+            boxShadow: "0 10px 20px rgba(0,0,0,0.1)" 
+          }}
+        >
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              checked={task.completed}
+              onChange={() => toggleTask(task.id)}
+              className="rounded"
+            />
+            <span 
+              className={`flex-1 ${
+                task.completed ? 'line-through text-gray-500' : ''
+              }`}
+            >
+              {task.title}
+            </span>
+            <div className="w-6 h-6 bg-gray-200 rounded cursor-grab" />
+          </div>
+        </Reorder.Item>
+      ))}
+    </Reorder.Group>
+  )
+}
+```
+
+## Page Transitions
+
+### Route Transitions
+```tsx
+import { motion, AnimatePresence } from 'framer-motion'
+import { useRouter } from 'next/router'
+
+// Page transition wrapper
+export function PageTransition({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
+
+  const pageVariants = {
+    initial: { opacity: 0, x: -100 },
+    in: { opacity: 1, x: 0 },
+    out: { opacity: 0, x: 100 }
+  }
+
+  const pageTransition = {
+    type: "tween",
+    ease: "anticipate",
+    duration: 0.5
+  }
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={router.asPath}
+        initial="initial"
+        animate="in"
+        exit="out"
+        variants={pageVariants}
+        transition={pageTransition}
+        className="min-h-screen"
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
+// Alternative slide transition
+export function SlideTransition({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={router.asPath}
+        initial={{ y: 300, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: -300, opacity: 0 }}
+        transition={{
+          type: "spring",
+          stiffness: 260,
+          damping: 20,
+        }}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+```
+
+### Modal Animations
+```tsx
+import { motion, AnimatePresence } from 'framer-motion'
+import { useEffect } from 'react'
+
+interface ModalProps {
+  isOpen: boolean
+  onClose: () => void
+  children: React.ReactNode
+}
+
+export function AnimatedModal({ isOpen, onClose, children }: ModalProps) {
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape)
+      document.body.style.overflow = 'hidden'
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape)
+      document.body.style.overflow = 'unset'
+    }
+  }, [isOpen, onClose])
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            transition={{ type: "spring", duration: 0.5 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-lg max-w-lg w-full max-h-screen overflow-auto"
+          >
+            {children}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// Notification toast
+export function Toast({ 
+  message, 
+  type = 'info', 
+  isVisible, 
+  onClose 
+}: {
+  message: string
+  type?: 'success' | 'error' | 'warning' | 'info'
+  isVisible: boolean
+  onClose: () => void
+}) {
+  const typeStyles = {
+    success: 'bg-green-500',
+    error: 'bg-red-500',
+    warning: 'bg-yellow-500',
+    info: 'bg-blue-500',
+  }
+
+  return (
+    <AnimatePresence>
+      {isVisible && (
+        <motion.div
+          initial={{ opacity: 0, y: -50, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -50, scale: 0.9 }}
+          transition={{ type: "spring", duration: 0.5 }}
+          className={`fixed top-4 right-4 ${typeStyles[type]} text-white px-6 py-4 rounded-lg shadow-lg z-50 max-w-md`}
+        >
+          <div className="flex items-center justify-between">
+            <span>{message}</span>
+            <button 
+              onClick={onClose}
+              className="ml-4 text-white hover:text-gray-200"
+            >
+              ×
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+```
+
+## Gestures & Interactions
+
+### Drag Interactions
+```tsx
+import { motion, PanInfo } from 'framer-motion'
+import { useState } from 'react'
+
+// Draggable card
+export function DraggableCard() {
+  const [isDragging, setIsDragging] = useState(false)
+
+  return (
+    <motion.div
+      drag
+      dragConstraints={{ left: -100, right: 100, top: -100, bottom: 100 }}
+      dragElastic={0.1}
+      onDragStart={() => setIsDragging(true)}
+      onDragEnd={() => setIsDragging(false)}
+      whileDrag={{ scale: 1.05, zIndex: 10 }}
+      className={`p-6 bg-white rounded-lg shadow-md cursor-grab active:cursor-grabbing ${
+        isDragging ? 'shadow-xl' : ''
+      }`}
+    >
+      <h3>Drag me around!</h3>
+      <p>I can be dragged within constraints.</p>
+    </motion.div>
+  )
+}
+
+// Swipe to dismiss
+export function SwipeCard({ 
+  children, 
+  onSwipeLeft, 
+  onSwipeRight 
+}: {
+  children: React.ReactNode
+  onSwipeLeft?: () => void
+  onSwipeRight?: () => void
+}) {
+  const [exitX, setExitX] = useState(0)
+
+  const handleDragEnd = (event: any, info: PanInfo) => {
+    const { offset, velocity } = info
+    
+    if (offset.x > 100 || velocity.x > 500) {
+      setExitX(1000)
+      onSwipeRight?.()
+    } else if (offset.x < -100 || velocity.x < -500) {
+      setExitX(-1000)
+      onSwipeLeft?.()
+    }
+  }
+
+  return (
+    <motion.div
+      drag="x"
+      dragConstraints={{ left: 0, right: 0 }}
+      onDragEnd={handleDragEnd}
+      animate={{ x: exitX }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className="bg-white rounded-lg shadow-md p-6 cursor-grab active:cursor-grabbing"
+      whileDrag={{ rotate: exitX / 10 }}
+    >
+      {children}
+    </motion.div>
+  )
+}
+```
+
+### Scroll-triggered Animations
+```tsx
+import { motion, useScroll, useTransform } from 'framer-motion'
+import { useRef } from 'react'
+
+// Parallax scrolling
+export function ParallaxSection() {
+  const ref = useRef(null)
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "end start"]
+  })
+
+  const y = useTransform(scrollYProgress, [0, 1], ["-50%", "50%"])
+
+  return (
+    <div ref={ref} className="h-screen overflow-hidden relative">
+      <motion.div
+        style={{ y }}
+        className="absolute inset-0 bg-gradient-to-b from-blue-400 to-purple-600"
+      >
+        <div className="flex items-center justify-center h-full text-white text-4xl font-bold">
+          Parallax Background
+        </div>
+      </motion.div>
+      <div className="relative z-10 flex items-center justify-center h-full">
+        <h2 className="text-6xl font-bold text-white">Scroll Me</h2>
+      </div>
+    </div>
+  )
+}
+
+// Reveal on scroll
+export function RevealOnScroll({ children }: { children: React.ReactNode }) {
+  const ref = useRef(null)
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "end start"]
+  })
+
+  const opacity = useTransform(scrollYProgress, [0, 0.3, 0.7, 1], [0, 1, 1, 0])
+  const scale = useTransform(scrollYProgress, [0, 0.3, 0.7, 1], [0.8, 1, 1, 0.8])
+
+  return (
+    <motion.div
+      ref={ref}
+      style={{ opacity, scale }}
+      className="py-20"
+    >
+      {children}
+    </motion.div>
+  )
+}
+```
+
+## Custom Hooks
+
+### Animation Hooks
+```tsx
+import { useAnimation, useInView } from 'framer-motion'
+import { useEffect, useRef } from 'react'
+
+// Hook for triggering animations when element comes into view
+export function useAnimateOnScroll() {
+  const controls = useAnimation()
+  const ref = useRef(null)
+  const inView = useInView(ref, { once: true, threshold: 0.1 })
+
+  useEffect(() => {
+    if (inView) {
+      controls.start('visible')
+    }
+  }, [controls, inView])
+
+  return { ref, controls }
+}
+
+// Usage
+export function ScrollAnimatedCard() {
+  const { ref, controls } = useAnimateOnScroll()
+
+  return (
+    <motion.div
+      ref={ref}
+      initial="hidden"
+      animate={controls}
+      variants={{
+        hidden: { opacity: 0, y: 50 },
+        visible: { opacity: 1, y: 0, transition: { duration: 0.6 } }
+      }}
+      className="p-6 bg-white rounded-lg shadow-md"
+    >
+      <h3>I animate when scrolled into view!</h3>
+    </motion.div>
+  )
+}
+
+// Counter animation hook
+export function useCounter(end: number, duration: number = 2) {
+  const [count, setCount] = useState(0)
+  const controls = useAnimation()
+
+  const startCounter = () => {
+    controls.start({
+      count: end,
+      transition: { duration, ease: "easeOut" }
+    })
+  }
+
+  useEffect(() => {
+    const unsubscribe = controls.mount(() => {
+      return controls.onChange((latest) => {
+        setCount(Math.round(latest.count))
+      })
+    })
+
+    return unsubscribe
+  }, [controls])
+
+  return { count, startCounter }
+}
+
+// Typing animation hook
+export function useTypingAnimation(text: string, speed: number = 50) {
+  const [displayText, setDisplayText] = useState('')
+  const [isComplete, setIsComplete] = useState(false)
+
+  useEffect(() => {
+    let i = 0
+    const timer = setInterval(() => {
+      if (i < text.length) {
+        setDisplayText(text.slice(0, i + 1))
+        i++
+      } else {
+        setIsComplete(true)
+        clearInterval(timer)
+      }
+    }, speed)
+
+    return () => clearInterval(timer)
+  }, [text, speed])
+
+  return { displayText, isComplete }
+}
+```
+
+## Performance Optimization
+
+### Optimize Heavy Animations
+```tsx
+import { motion, useReducedMotion } from 'framer-motion'
+
+// Respect user preferences
+export function AccessibleAnimation({ children }: { children: React.ReactNode }) {
+  const shouldReduceMotion = useReducedMotion()
+
+  return (
+    <motion.div
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
+      animate={shouldReduceMotion ? false : { opacity: 1, y: 0 }}
+      transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.5 }}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+// Use transform for better performance
+export function OptimizedCard() {
+  return (
+    <motion.div
+      whileHover={{ 
+        scale: 1.05,
+        // Use transform instead of changing width/height
+        transition: { duration: 0.2 }
+      }}
+      // Enable hardware acceleration
+      style={{ 
+        willChange: 'transform',
+        backfaceVisibility: 'hidden'
+      }}
+      className="p-6 bg-white rounded-lg shadow-md"
+    >
+      <h3>Optimized Animation</h3>
+    </motion.div>
+  )
+}
+
+// Virtualize long lists with animations
+export function VirtualizedAnimatedList({ items }: { items: any[] }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [visibleItems, setVisibleItems] = useState(items.slice(0, 20))
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            // Load more items
+            setVisibleItems(prev => [...prev, ...items.slice(prev.length, prev.length + 10)])
+          }
+        })
+      },
+      { rootMargin: '100px' }
+    )
+
+    const sentinel = containerRef.current?.lastElementChild
+    if (sentinel) observer.observe(sentinel)
+
+    return () => observer.disconnect()
+  }, [items, visibleItems])
+
+  return (
+    <div ref={containerRef} className="space-y-2">
+      {visibleItems.map((item, index) => (
+        <motion.div
+          key={item.id}
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: index * 0.05 }}
+          className="p-4 bg-white rounded-lg shadow-sm"
+        >
+          {item.title}
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+```
+
+### Animation Presets
+```tsx
+// lib/motion-presets.ts
+import { Variants } from 'framer-motion'
+
+export const motionPresets = {
+  // Fade animations
+  fadeIn: {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+  },
+
+  fadeInUp: {
+    initial: { opacity: 0, y: 20 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: -20 },
+  },
+
+  fadeInDown: {
+    initial: { opacity: 0, y: -20 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: 20 },
+  },
+
+  // Scale animations
+  scaleIn: {
+    initial: { scale: 0, opacity: 0 },
+    animate: { scale: 1, opacity: 1 },
+    exit: { scale: 0, opacity: 0 },
+  },
+
+  // Slide animations
+  slideInLeft: {
+    initial: { x: -100, opacity: 0 },
+    animate: { x: 0, opacity: 1 },
+    exit: { x: -100, opacity: 0 },
+  },
+
+  slideInRight: {
+    initial: { x: 100, opacity: 0 },
+    animate: { x: 0, opacity: 1 },
+    exit: { x: 100, opacity: 0 },
+  },
+
+  // Stagger container
+  stagger: {
+    animate: {
+      transition: {
+        staggerChildren: 0.1,
+      },
+    },
+  },
+} as const
+
+// Component using presets
+export function PresetCard() {
+  return (
+    <motion.div
+      {...motionPresets.fadeInUp}
+      transition={{ duration: 0.5 }}
+      className="p-6 bg-white rounded-lg shadow-md"
+    >
+      <h3>Using Motion Presets</h3>
+    </motion.div>
+  )
+}
+```
+
+## Best Practices
+
+1. **Performance**: Use `transform` properties (x, y, scale, rotate) for smooth animations
+2. **Accessibility**: Respect `prefers-reduced-motion` with `useReducedMotion()`
+3. **Battery Life**: Avoid animating expensive properties like `width`, `height`, `boxShadow`
+4. **Layout Animations**: Use `layout` prop for automatic layout animations
+5. **Exit Animations**: Always wrap with `AnimatePresence` for exit animations
+6. **Gesture Constraints**: Use `dragConstraints` to prevent dragging outside bounds
+7. **Spring Physics**: Use spring animations for natural, responsive motion
+8. **Reduced Bundle**: Import only needed components from Framer Motion
+9. **Variants**: Use variants for complex animations and better organization
+10. **Testing**: Test animations on lower-end devices and slower connections

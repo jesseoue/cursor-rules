@@ -1,0 +1,612 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Inngest Development Rules
+
+## Core Setup
+
+### Installation & Configuration
+```typescript
+// lib/inngest.ts
+import { Inngest } from "inngest"
+
+export const inngest = new Inngest({ 
+  id: "my-app",
+  name: "My App",
+  isDev: process.env.NODE_ENV === "development",
+})
+
+// Environment-specific configuration
+export const inngestConfig = {
+  signingKey: process.env.INNGEST_SIGNING_KEY!,
+  eventKey: process.env.INNGEST_EVENT_KEY!,
+  servePath: "/api/inngest"
+}
+```
+
+### API Route Handler
+```typescript
+// app/api/inngest/route.ts
+import { serve } from "inngest/next"
+import { inngest } from "@/lib/inngest"
+import { helloWorld } from "@/inngest/hello-world"
+import { processPayment } from "@/inngest/process-payment"
+import { sendEmailSequence } from "@/inngest/send-email-sequence"
+import { cleanupExpiredSessions } from "@/inngest/cleanup-sessions"
+
+// Export all your functions in an array
+export const { GET, POST, PUT } = serve({
+  client: inngest,
+  functions: [
+    helloWorld,
+    processPayment,
+    sendEmailSequence,
+    cleanupExpiredSessions,
+  ]
+})
+```
+
+## Basic Functions
+
+### Simple Event Handler
+```typescript
+// inngest/hello-world.ts
+import { inngest } from "@/lib/inngest"
+
+export const helloWorld = inngest.createFunction(
+  { id: "hello-world" },
+  { event: "demo/hello.world" },
+  async ({ event, step }) => {
+    await step.run("log-hello", async () => {
+      console.log(`Hello, ${event.data.name}!`)
+      return { message: `Hello, ${event.data.name}!` }
+    })
+    
+    return { 
+      message: "Function completed successfully",
+      data: event.data 
+    }
+  }
+)
+
+// Usage: Send event from anywhere in your app
+// await inngest.send({ name: "demo/hello.world", data: { name: "World" } })
+```
+
+### Multi-Step Workflow
+```typescript
+// inngest/process-payment.ts
+import { inngest } from "@/lib/inngest"
+
+export const processPayment = inngest.createFunction(
+  { 
+    id: "process-payment",
+    retries: 3,
+    concurrency: {
+      limit: 10,
+      key: "event.data.userId"
+    }
+  },
+  { event: "payment/process" },
+  async ({ event, step }) => {
+    const { userId, amount, paymentMethodId } = event.data
+
+    // Step 1: Validate payment method
+    const paymentMethod = await step.run("validate-payment-method", async () => {
+      const stripe = await import("stripe")
+      const stripeClient = new stripe.default(process.env.STRIPE_SECRET_KEY!)
+      
+      return await stripeClient.paymentMethods.retrieve(paymentMethodId)
+    })
+
+    // Step 2: Create payment intent
+    const paymentIntent = await step.run("create-payment-intent", async () => {
+      const stripe = await import("stripe")
+      const stripeClient = new stripe.default(process.env.STRIPE_SECRET_KEY!)
+      
+      return await stripeClient.paymentIntents.create({
+        amount: amount * 100, // Convert to cents
+        currency: "usd",
+        payment_method: paymentMethodId,
+        customer: userId,
+        confirm: true,
+        return_url: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/success`,
+      })
+    })
+
+    // Step 3: Update database
+    const dbUpdate = await step.run("update-database", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      
+      return await prisma.payment.create({
+        data: {
+          userId,
+          stripePaymentIntentId: paymentIntent.id,
+          amount,
+          status: paymentIntent.status,
+        }
+      })
+    })
+
+    // Step 4: Send confirmation email
+    await step.run("send-confirmation-email", async () => {
+      const { resend } = await import("@/lib/resend")
+      
+      await resend.emails.send({
+        from: "noreply@yourapp.com",
+        to: event.data.userEmail,
+        subject: "Payment Confirmation",
+        html: `
+          <h1>Payment Successful</h1>
+          <p>Your payment of $${amount} has been processed successfully.</p>
+          <p>Payment ID: ${paymentIntent.id}</p>
+        `
+      })
+    })
+
+    // Step 5: Trigger follow-up events
+    await step.sendEvent("send-welcome-sequence", {
+      name: "user/welcome.sequence",
+      data: { userId, paymentId: dbUpdate.id }
+    })
+
+    return {
+      success: true,
+      paymentIntentId: paymentIntent.id,
+      databaseId: dbUpdate.id
+    }
+  }
+)
+```
+
+## Scheduled Functions (Cron Jobs)
+
+### Periodic Cleanup
+```typescript
+// inngest/cleanup-sessions.ts
+import { inngest } from "@/lib/inngest"
+
+export const cleanupExpiredSessions = inngest.createFunction(
+  { id: "cleanup-expired-sessions" },
+  { cron: "0 2 * * *" }, // Run daily at 2 AM
+  async ({ step }) => {
+    const deletedSessions = await step.run("delete-expired-sessions", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      
+      const result = await prisma.session.deleteMany({
+        where: {
+          expiresAt: {
+            lt: new Date()
+          }
+        }
+      })
+      
+      return result.count
+    })
+
+    const deletedTokens = await step.run("delete-expired-tokens", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      
+      const result = await prisma.verificationToken.deleteMany({
+        where: {
+          expiresAt: {
+            lt: new Date()
+          }
+        }
+      })
+      
+      return result.count
+    })
+
+    // Log cleanup results
+    await step.run("log-cleanup-results", async () => {
+      console.log(`Cleanup completed: ${deletedSessions} sessions, ${deletedTokens} tokens deleted`)
+    })
+
+    return {
+      sessionsDeleted: deletedSessions,
+      tokensDeleted: deletedTokens,
+      cleanupDate: new Date().toISOString()
+    }
+  }
+)
+```
+
+### Report Generation
+```typescript
+// inngest/generate-reports.ts
+import { inngest } from "@/lib/inngest"
+
+export const generateWeeklyReport = inngest.createFunction(
+  { id: "generate-weekly-report" },
+  { cron: "0 9 * * 1" }, // Every Monday at 9 AM
+  async ({ step }) => {
+    const reportData = await step.run("collect-report-data", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      
+      const endDate = new Date()
+      const startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+      const [users, payments, orders] = await Promise.all([
+        prisma.user.count({
+          where: { createdAt: { gte: startDate, lt: endDate } }
+        }),
+        prisma.payment.aggregate({
+          where: { createdAt: { gte: startDate, lt: endDate } },
+          _sum: { amount: true },
+          _count: true
+        }),
+        prisma.order.count({
+          where: { createdAt: { gte: startDate, lt: endDate } }
+        })
+      ])
+
+      return {
+        period: { start: startDate, end: endDate },
+        newUsers: users,
+        totalRevenue: payments._sum.amount || 0,
+        totalPayments: payments._count,
+        totalOrders: orders
+      }
+    })
+
+    const reportHtml = await step.run("generate-report-html", async () => {
+      return `
+        <h1>Weekly Report</h1>
+        <h2>Period: ${reportData.period.start.toDateString()} - ${reportData.period.end.toDateString()}</h2>
+        <ul>
+          <li>New Users: ${reportData.newUsers}</li>
+          <li>Total Revenue: $${reportData.totalRevenue}</li>
+          <li>Total Payments: ${reportData.totalPayments}</li>
+          <li>Total Orders: ${reportData.totalOrders}</li>
+        </ul>
+      `
+    })
+
+    await step.run("email-report", async () => {
+      const { resend } = await import("@/lib/resend")
+      
+      await resend.emails.send({
+        from: "reports@yourapp.com",
+        to: "admin@yourapp.com",
+        subject: `Weekly Report - ${reportData.period.end.toDateString()}`,
+        html: reportHtml
+      })
+    })
+
+    return reportData
+  }
+)
+```
+
+## Email Sequences & Drip Campaigns
+
+### Welcome Email Sequence
+```typescript
+// inngest/send-email-sequence.ts
+import { inngest } from "@/lib/inngest"
+
+export const sendWelcomeSequence = inngest.createFunction(
+  { id: "send-welcome-sequence" },
+  { event: "user/welcome.sequence" },
+  async ({ event, step }) => {
+    const { userId } = event.data
+
+    // Get user details
+    const user = await step.run("get-user", async () => {
+      const { prisma } = await import("@/lib/prisma")
+      return await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, name: true, createdAt: true }
+      })
+    })
+
+    if (!user) {
+      throw new Error("User not found")
+    }
+
+    // Welcome email (immediate)
+    await step.run("send-welcome-email", async () => {
+      const { resend } = await import("@/lib/resend")
+      
+      await resend.emails.send({
+        from: "welcome@yourapp.com",
+        to: user.email,
+        subject: "Welcome to Our Platform!",
+        html: `
+          <h1>Welcome, ${user.name}!</h1>
+          <p>We're excited to have you on board.</p>
+          <p>Here are some next steps to get you started:</p>
+          <ul>
+            <li>Complete your profile</li>
+            <li>Explore our features</li>
+            <li>Join our community</li>
+          </ul>
+        `
+      })
+    })
+
+    // Follow-up email (after 3 days)
+    await step.sleepUntil("wait-3-days", 
+      new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+    )
+
+    await step.run("send-tips-email", async () => {
+      const { resend } = await import("@/lib/resend")
+      
+      await resend.emails.send({
+        from: "tips@yourapp.com",
+        to: user.email,
+        subject: "Pro Tips for Getting Started",
+        html: `
+          <h1>Here are some pro tips, ${user.name}!</h1>
+          <p>To help you get the most out of our platform:</p>
+          <ul>
+            <li>Tip 1: Customize your dashboard</li>
+            <li>Tip 2: Set up notifications</li>
+            <li>Tip 3: Connect with other users</li>
+          </ul>
+        `
+      })
+    })
+
+    // Final email (after 7 days)
+    await step.sleepUntil("wait-7-days", 
+      new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    )
+
+    await step.run("send-feedback-email", async () => {
+      const { resend } = await import("@/lib/resend")
+      
+      await resend.emails.send({
+        from: "feedback@yourapp.com",
+        to: user.email,
+        subject: "How's your experience so far?",
+        html: `
+          <h1>We'd love your feedback, ${user.name}!</h1>
+          <p>You've been with us for a week now. How are things going?</p>
+          <p>We'd love to hear about your experience and how we can improve.</p>
+          <a href="${process.env.NEXT_PUBLIC_BASE_URL}/feedback">Share Your Feedback</a>
+        `
+      })
+    })
+
+    return { success: true, emailsSent: 3 }
+  }
+)
+```
+
+## Error Handling & Retries
+
+### Robust Function with Error Handling
+```typescript
+// inngest/process-webhook.ts
+import { inngest } from "@/lib/inngest"
+import { NonRetriableError } from "inngest"
+
+export const processWebhook = inngest.createFunction(
+  { 
+    id: "process-webhook",
+    retries: 5,
+    rateLimit: {
+      limit: 100,
+      period: "1m"
+    }
+  },
+  { event: "webhook/received" },
+  async ({ event, step, attempt }) => {
+    const { source, data, headers } = event.data
+
+    // Step 1: Validate webhook signature
+    const isValid = await step.run("validate-signature", async () => {
+      try {
+        // Example for Stripe webhook validation
+        if (source === "stripe") {
+          const stripe = await import("stripe")
+          const stripeClient = new stripe.default(process.env.STRIPE_SECRET_KEY!)
+          
+          const signature = headers['stripe-signature']
+          const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET!
+          
+          stripeClient.webhooks.constructEvent(
+            JSON.stringify(data),
+            signature,
+            endpointSecret
+          )
+          
+          return true
+        }
+        
+        return true
+      } catch (error) {
+        // Invalid signature - don't retry
+        throw new NonRetriableError("Invalid webhook signature")
+      }
+    })
+
+    // Step 2: Process webhook data
+    const result = await step.run("process-data", async () => {
+      try {
+        switch (data.type) {
+          case "payment_intent.succeeded":
+            return await handlePaymentSuccess(data.data.object)
+          
+          case "customer.subscription.created":
+            return await handleSubscriptionCreated(data.data.object)
+          
+          case "invoice.payment_failed":
+            return await handlePaymentFailed(data.data.object)
+          
+          default:
+            console.log(`Unhandled webhook type: ${data.type}`)
+            return { processed: false, reason: "Unhandled type" }
+        }
+      } catch (error) {
+        // Log error with context
+        console.error("Webhook processing failed:", {
+          attempt,
+          source,
+          type: data.type,
+          error: error.message
+        })
+        
+        // Retry for transient errors
+        if (error.message.includes("timeout") || error.message.includes("network")) {
+          throw error // Will be retried
+        }
+        
+        // Don't retry for permanent errors
+        throw new NonRetriableError(`Processing failed: ${error.message}`)
+      }
+    })
+
+    // Step 3: Send notifications if needed
+    if (result.shouldNotify) {
+      await step.run("send-notification", async () => {
+        // Send notification logic here
+        return await sendSlackNotification({
+          channel: "#webhooks",
+          message: `Webhook processed: ${source} - ${data.type}`,
+          data: result
+        })
+      })
+    }
+
+    return result
+  }
+)
+
+async function handlePaymentSuccess(paymentIntent: any) {
+  // Handle successful payment
+  return { processed: true, shouldNotify: true }
+}
+
+async function handleSubscriptionCreated(subscription: any) {
+  // Handle new subscription
+  return { processed: true, shouldNotify: true }
+}
+
+async function handlePaymentFailed(invoice: any) {
+  // Handle failed payment
+  return { processed: true, shouldNotify: true }
+}
+
+async function sendSlackNotification(params: any) {
+  // Slack notification implementation
+  return { sent: true }
+}
+```
+
+## Testing Functions
+
+### Function Testing
+```typescript
+// tests/inngest/hello-world.test.ts
+import { describe, it, expect, vi } from "vitest"
+import { helloWorld } from "@/inngest/hello-world"
+
+describe("helloWorld function", () => {
+  it("should process hello world event", async () => {
+    const mockStep = {
+      run: vi.fn().mockImplementation(async (name, fn) => await fn())
+    }
+
+    const result = await helloWorld.handler({
+      event: {
+        name: "demo/hello.world",
+        data: { name: "Test User" }
+      },
+      step: mockStep,
+      attempt: 1
+    })
+
+    expect(result.message).toBe("Function completed successfully")
+    expect(result.data.name).toBe("Test User")
+    expect(mockStep.run).toHaveBeenCalledWith("log-hello", expect.any(Function))
+  })
+})
+```
+
+## Sending Events
+
+### From API Routes
+```typescript
+// app/api/users/route.ts
+import { NextRequest, NextResponse } from "next/server"
+import { inngest } from "@/lib/inngest"
+
+export async function POST(request: NextRequest) {
+  const userData = await request.json()
+  
+  // Create user in database
+  const user = await createUser(userData)
+  
+  // Trigger welcome sequence
+  await inngest.send({
+    name: "user/welcome.sequence",
+    data: {
+      userId: user.id,
+      userEmail: user.email,
+      userName: user.name
+    }
+  })
+  
+  return NextResponse.json(user)
+}
+```
+
+### From Client Components
+```typescript
+// components/payment-form.tsx
+"use client"
+
+import { useState } from "react"
+
+export function PaymentForm() {
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  const handlePayment = async (paymentData: any) => {
+    setIsProcessing(true)
+    
+    try {
+      // Send payment event to Inngest
+      const response = await fetch("/api/process-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(paymentData)
+      })
+      
+      if (response.ok) {
+        // Payment processing started
+        console.log("Payment processing initiated")
+      }
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  return (
+    <button 
+      onClick={() => handlePayment({ amount: 99.99, userId: "user123" })}
+      disabled={isProcessing}
+    >
+      {isProcessing ? "Processing..." : "Pay Now"}
+    </button>
+  )
+}
+```
+
+## Best Practices
+
+1. **Idempotency**: Make functions idempotent by using unique keys for operations
+2. **Error Handling**: Use NonRetriableError for permanent failures
+3. **Step Organization**: Break complex workflows into logical steps
+4. **Concurrency Control**: Use concurrency limits to prevent overwhelming external services
+5. **Rate Limiting**: Implement rate limits for API-heavy functions
+6. **Monitoring**: Add logging and monitoring for production functions
+7. **Testing**: Write unit tests for function logic
+8. **Event Naming**: Use consistent, descriptive event names
+9. **Data Validation**: Validate event data before processing
+10. **Retries**: Configure appropriate retry strategies for different error types

@@ -1,0 +1,478 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Tailwind CSS Development Rules
+
+## Core Principles
+
+### Utility-First Approach
+```tsx
+// ✅ Good - Utility classes
+<div className="flex items-center justify-between p-4 bg-white rounded-lg shadow-md">
+  <h2 className="text-xl font-semibold text-gray-900">Title</h2>
+  <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+    Action
+  </button>
+</div>
+
+// ❌ Avoid - Custom CSS when utilities exist
+<div className="custom-card">
+  <h2 className="custom-title">Title</h2>
+  <button className="custom-button">Action</button>
+</div>
+```
+
+### Responsive Design
+```tsx
+// Mobile-first responsive design
+<div className="w-full md:w-1/2 lg:w-1/3 xl:w-1/4">
+  <img className="w-full h-48 md:h-56 lg:h-64 object-cover" />
+</div>
+
+// Complex responsive layouts
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+  {items.map(item => (
+    <div key={item.id} className="bg-white rounded-lg p-4 sm:p-6">
+      <h3 className="text-lg sm:text-xl font-medium">{item.title}</h3>
+    </div>
+  ))}
+</div>
+```
+
+## Configuration
+
+### Tailwind Config Setup
+```typescript
+// tailwind.config.ts
+import type { Config } from 'tailwindcss'
+
+const config: Config = {
+  content: [
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50: '#eff6ff',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          900: '#1e3a8a',
+        },
+        gray: {
+          50: '#f9fafb',
+          100: '#f3f4f6',
+          200: '#e5e7eb',
+          300: '#d1d5db',
+          400: '#9ca3af',
+          500: '#6b7280',
+          600: '#4b5563',
+          700: '#374151',
+          800: '#1f2937',
+          900: '#111827',
+        }
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+      spacing: {
+        '18': '4.5rem',
+        '88': '22rem',
+      },
+      animation: {
+        'fade-in': 'fadeIn 0.5s ease-in-out',
+        'slide-up': 'slideUp 0.3s ease-out',
+      },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        slideUp: {
+          '0%': { transform: 'translateY(10px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+      },
+    },
+  },
+  plugins: [
+    require('@tailwindcss/forms'),
+    require('@tailwindcss/typography'),
+    require('@tailwindcss/aspect-ratio'),
+  ],
+}
+
+export default config
+```
+
+### CSS Setup
+```css
+/* app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+  
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  }
+  
+  .btn-secondary {
+    @apply btn bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500;
+  }
+  
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+  }
+  
+  .input {
+    @apply block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  
+  .animation-delay-400 {
+    animation-delay: 400ms;
+  }
+}
+```
+
+## Component Patterns
+
+### Layout Components
+```tsx
+// Container component
+function Container({ children, className = "" }: {
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+// Section component
+function Section({ children, className = "" }: {
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <section className={`py-12 sm:py-16 lg:py-20 ${className}`}>
+      {children}
+    </section>
+  )
+}
+
+// Grid component
+function Grid({ children, cols = "auto" }: {
+  children: React.ReactNode
+  cols?: "1" | "2" | "3" | "4" | "auto"
+}) {
+  const gridCols = {
+    "1": "grid-cols-1",
+    "2": "grid-cols-1 md:grid-cols-2",
+    "3": "grid-cols-1 md:grid-cols-2 lg:grid-cols-3",
+    "4": "grid-cols-1 md:grid-cols-2 lg:grid-cols-4",
+    "auto": "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+  }
+  
+  return (
+    <div className={`grid ${gridCols[cols]} gap-6`}>
+      {children}
+    </div>
+  )
+}
+```
+
+### Form Components
+```tsx
+// Input component with variants
+interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  label?: string
+  error?: string
+  variant?: 'default' | 'filled'
+}
+
+function Input({ label, error, variant = 'default', className = "", ...props }: InputProps) {
+  const baseClasses = "block w-full rounded-md shadow-sm focus:ring-2 focus:ring-offset-0 transition-colors"
+  const variantClasses = {
+    default: "border-gray-300 focus:border-primary-500 focus:ring-primary-500",
+    filled: "border-0 bg-gray-100 focus:bg-white focus:ring-primary-500"
+  }
+  const errorClasses = error ? "border-red-300 focus:border-red-500 focus:ring-red-500" : variantClasses[variant]
+  
+  return (
+    <div className="space-y-1">
+      {label && (
+        <label className="block text-sm font-medium text-gray-700">
+          {label}
+        </label>
+      )}
+      <input
+        className={`${baseClasses} ${errorClasses} ${className}`}
+        {...props}
+      />
+      {error && (
+        <p className="text-sm text-red-600">{error}</p>
+      )}
+    </div>
+  )
+}
+
+// Select component
+function Select({ label, error, children, ...props }: {
+  label?: string
+  error?: string
+  children: React.ReactNode
+} & React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <div className="space-y-1">
+      {label && (
+        <label className="block text-sm font-medium text-gray-700">
+          {label}
+        </label>
+      )}
+      <select
+        className={`block w-full rounded-md shadow-sm focus:ring-2 focus:ring-primary-500 ${
+          error 
+            ? "border-red-300 focus:border-red-500" 
+            : "border-gray-300 focus:border-primary-500"
+        }`}
+        {...props}
+      >
+        {children}
+      </select>
+      {error && (
+        <p className="text-sm text-red-600">{error}</p>
+      )}
+    </div>
+  )
+}
+```
+
+### Button Components
+```tsx
+// Button with variants and sizes
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'
+  size?: 'sm' | 'md' | 'lg'
+  isLoading?: boolean
+  leftIcon?: React.ReactNode
+  rightIcon?: React.ReactNode
+}
+
+function Button({ 
+  variant = 'primary', 
+  size = 'md', 
+  isLoading = false,
+  leftIcon,
+  rightIcon,
+  children,
+  className = "",
+  disabled,
+  ...props 
+}: ButtonProps) {
+  const baseClasses = "inline-flex items-center justify-center font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+  
+  const variants = {
+    primary: "bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500",
+    secondary: "bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500",
+    outline: "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-primary-500",
+    ghost: "text-gray-700 hover:bg-gray-100 focus:ring-gray-500",
+    danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500"
+  }
+  
+  const sizes = {
+    sm: "px-3 py-1.5 text-sm",
+    md: "px-4 py-2 text-sm",
+    lg: "px-6 py-3 text-base"
+  }
+  
+  return (
+    <button
+      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${className}`}
+      disabled={disabled || isLoading}
+      {...props}
+    >
+      {isLoading && (
+        <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+      )}
+      {!isLoading && leftIcon && <span className="mr-2">{leftIcon}</span>}
+      {children}
+      {!isLoading && rightIcon && <span className="ml-2">{rightIcon}</span>}
+    </button>
+  )
+}
+```
+
+## Advanced Patterns
+
+### Dark Mode
+```tsx
+// Dark mode toggle with system preference
+'use client'
+
+import { useState, useEffect } from 'react'
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
+  
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const handleChange = () => {
+      if (theme === 'system') {
+        document.documentElement.classList.toggle('dark', mediaQuery.matches)
+      }
+    }
+    
+    handleChange()
+    mediaQuery.addEventListener('change', handleChange)
+    return () => mediaQuery.removeEventListener('change', handleChange)
+  }, [theme])
+  
+  const setThemeMode = (newTheme: 'light' | 'dark' | 'system') => {
+    setTheme(newTheme)
+    if (newTheme === 'light') {
+      document.documentElement.classList.remove('dark')
+    } else if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark')
+    }
+  }
+  
+  return (
+    <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      {children}
+    </div>
+  )
+}
+
+// Dark mode classes
+<div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+  <h1 className="text-gray-900 dark:text-white">Title</h1>
+  <p className="text-gray-600 dark:text-gray-300">Description</p>
+</div>
+```
+
+### Animations and Transitions
+```tsx
+// Animated components
+function AnimatedCard({ children, delay = 0 }: {
+  children: React.ReactNode
+  delay?: number
+}) {
+  return (
+    <div 
+      className="animate-fade-in opacity-0 translate-y-4"
+      style={{ animationDelay: `${delay}ms`, animationFillMode: 'forwards' }}
+    >
+      {children}
+    </div>
+  )
+}
+
+// Hover effects
+<div className="group relative overflow-hidden rounded-lg">
+  <img className="w-full h-64 object-cover transition-transform group-hover:scale-105" />
+  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity" />
+  <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform">
+    <h3 className="font-semibold">Overlay Content</h3>
+  </div>
+</div>
+```
+
+### Performance Optimization
+```tsx
+// Conditional classes with clsx
+import clsx from 'clsx'
+
+function Badge({ variant, size, children }: {
+  variant: 'success' | 'warning' | 'error'
+  size: 'sm' | 'md' | 'lg'
+  children: React.ReactNode
+}) {
+  return (
+    <span className={clsx(
+      'inline-flex items-center font-medium rounded-full',
+      {
+        'bg-green-100 text-green-800': variant === 'success',
+        'bg-yellow-100 text-yellow-800': variant === 'warning',
+        'bg-red-100 text-red-800': variant === 'error',
+      },
+      {
+        'px-2.5 py-0.5 text-xs': size === 'sm',
+        'px-3 py-1 text-sm': size === 'md',
+        'px-4 py-2 text-base': size === 'lg',
+      }
+    )}>
+      {children}
+    </span>
+  )
+}
+
+// Memoize complex class computations
+import { useMemo } from 'react'
+
+function ComplexComponent({ state, variant, size }: Props) {
+  const classes = useMemo(() => {
+    return clsx(
+      'base-classes',
+      {
+        'state-active': state === 'active',
+        'state-disabled': state === 'disabled',
+      },
+      getVariantClasses(variant),
+      getSizeClasses(size)
+    )
+  }, [state, variant, size])
+  
+  return <div className={classes}>Content</div>
+}
+```
+
+## Best Practices
+
+1. **Use semantic class names for components**: Create meaningful component classes with `@layer components`
+2. **Follow mobile-first responsive design**: Start with mobile classes, then use breakpoint prefixes
+3. **Leverage CSS custom properties**: Use CSS variables for dynamic values
+4. **Extract repetitive patterns**: Create reusable component classes
+5. **Use purge/content configuration**: Ensure unused styles are removed in production
+6. **Organize utilities**: Group related utilities and use consistent naming
+7. **Performance**: Use `clsx` or `classnames` for conditional classes
+8. **Accessibility**: Include focus states and proper contrast ratios
