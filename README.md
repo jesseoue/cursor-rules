@@ -1,185 +1,140 @@
-# Cursor Rules Repository
+# Comprehensive Cursor Rules for Modern Web Development
 
-A comprehensive collection of **MDC (Markdown with metadata)** cursor rules for modern web development. These rules provide intelligent code assistance, patterns, and best practices for popular frameworks, tools, and services.
+A complete collection of production-ready cursor rules for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
 
-## 🚀 What are Cursor Rules?
+## 🎯 Overview
 
-Cursor rules are specialized configuration files that enhance the AI coding assistant's understanding of your project. They provide:
+This repository contains **19 comprehensive cursor rules** covering the complete modern web development stack, from frontend frameworks to backend services, databases, authentication, payments, and more.
 
-- **Context-aware suggestions** based on your tech stack
-- **Framework-specific patterns** and best practices  
-- **Intelligent auto-completion** for common tasks
-- **Code quality enforcement** through established conventions
+## 📁 Available Rules
 
-## 📁 Rule Types
+### Core Frameworks & Languages
+- **`typescript.mdc`** - Strict TypeScript configuration, advanced patterns, and utility types
+- **`nextjs.mdc`** - Next.js App Router, Server Components, API routes, and performance optimization
+- **`react.mdc`** - Modern React patterns, hooks, context, and performance optimization
 
-Our rules use Cursor's MDC format with metadata-driven activation:
+### Styling & UI
+- **`tailwind.mdc`** - Utility-first CSS framework with responsive design patterns
+- **`shadcn.mdc`** - Component library with theming and accessibility
+- **`framer-motion.mdc`** - Animation library with gestures, transitions, and performance
 
-### Always Active Rules
-- **`typescript.mdc`** - Core TypeScript patterns and utilities (always included)
+### Form Handling & Validation
+- **`react-hook-form.mdc`** - Form handling with validation and performance optimization
+- **`zod.mdc`** - Schema validation with type safety and error handling
 
-### Auto-Attached Rules  
-Automatically activated when working with matching files:
+### Data Fetching & State Management
+- **`tanstack-query.mdc`** - Data synchronization, caching, and mutations
+- **`supabase.mdc`** - Backend-as-a-service with real-time features and authentication
 
-- **`nextjs.mdc`** - Next.js App Router patterns (`**/app/**/*.{ts,tsx}`, `next.config.*`)
-- **`react.mdc`** - React component patterns (`**/*.{jsx,tsx}`, `**/components/**`)
-- **`drizzle.mdc`** - Database schema and queries (`**/db/**/*.ts`, `drizzle.config.*`) 
-- **`shadcn.mdc`** - UI component patterns (`**/components/ui/**`, `components.json`)
-- **`clerk.mdc`** - Authentication flows (`**/middleware.{ts,tsx}`, `**/auth/**`)
-- **`tinybird.mdc`** - Analytics pipelines (`**/*.pipe`, `**/tinybird/**`)
-- **`cloudflare-workers.mdc`** - Edge computing (`**/workers/**`, `wrangler.toml`)
+### Database & ORM
+- **`drizzle.mdc`** - Type-safe SQL ORM with migrations and advanced queries
 
-### Agent-Requested Rules
-Available when the AI determines they're relevant:
+### Authentication
+- **`clerk.mdc`** - Complete authentication solution with organizations and webhooks
+- **`better-auth.mdc`** - Modern authentication with session management
 
-- **`mcps.mdc`** - Model Context Protocols reference guide
+### Backend & Automation
+- **`inngest.mdc`** - Event-driven functions and background jobs
+- **`trigger.mdc`** - Workflow automation and job processing
+- **`cloudflare-workers.mdc`** - Edge computing with KV, D1, and R2 storage
 
-## 🛠️ Tech Stack Coverage
+### Analytics & Data
+- **`tinybird.mdc`** - Real-time analytics with ClickHouse and API endpoints
 
-### Frontend Frameworks
-- **Next.js 15** - App Router, Server Components, API Routes
-- **React 18** - Hooks, Performance optimization, Testing patterns
-- **TypeScript** - Advanced types, utilities, error handling
+### Payments & Commerce
+- **`stripe.mdc`** - Payment processing, subscriptions, webhooks, and marketplace features
 
-### Backend & Database  
-- **Drizzle ORM** - Type-safe database operations
-- **Cloudflare Workers** - Edge computing, KV, D1, R2
-- **Tinybird** - Real-time analytics and data pipelines
+### Development Tools
+- **`mcps.mdc`** - Model Context Protocols for enhanced AI development
 
-### UI & Design
-- **Shadcn/ui** - Component library patterns
-- **Tailwind CSS** - Utility-first styling
-- **Class Variance Authority** - Component variants
+## 🚀 Quick Start
 
-### Authentication & Services
-- **Clerk** - User management and authentication
-- **Model Context Protocols** - AI tool integrations
+1. Clone this repository to your local machine
+2. Copy the `.cursor/rules/` directory to your project
+3. The rules will automatically attach based on file patterns in your project
 
-## 📚 Usage Examples
-
-### Next.js App Router
-```typescript
-// Automatically provides patterns for:
-export default async function Page({ params }: { params: { id: string } }) {
-  const data = await getData(params.id)
-  return <div>{data.title}</div>
-}
+```bash
+git clone https://github.com/jesseoue/cursor-rules.git
+cp -r cursor-rules/.cursor /path/to/your/project/
 ```
 
-### Drizzle Schema
-```typescript
-// Auto-suggests proper table definitions:
-export const users = pgTable('users', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  email: varchar('email', { length: 255 }).notNull().unique(),
-  createdAt: timestamp('created_at').defaultNow(),
-})
-```
+## 📖 Rule Types
 
-### Tinybird Analytics
-```sql
--- Provides pipe patterns and SQL optimizations:
-SELECT 
-  toDate(timestamp) as date,
-  count() as events
-FROM analytics_events
-WHERE timestamp >= now() - interval 30 day
-GROUP BY date
-ORDER BY date DESC
-```
+### Always Rules
+- **TypeScript** - Always included for type safety
 
-## 🎯 Key Features
+### Auto-Attached Rules
+Most rules auto-attach based on file patterns:
+- React components (`.tsx`, `.jsx`)
+- API routes (`/api/**`)
+- Database schemas (`schema.ts`, `drizzle.config.ts`)
+- Configuration files (`tailwind.config.js`, etc.)
 
-- **🔄 Auto-activation** based on file patterns
-- **📖 Comprehensive examples** for each technology
-- **⚡ Performance patterns** and optimizations  
-- **🛡️ Security best practices** built-in
-- **🧪 Testing strategies** included
-- **📱 TypeScript-first** approach throughout
+### Agent Requested Rules
+- **MCPs** - Available when the AI needs protocol information
 
-## 🔧 Installation
+## 🛠 Features
 
-1. **Clone this repository** to your preferred location:
-   ```bash
-   git clone https://github.com/your-username/cursor-rules.git
-   ```
+### ✅ Production Ready
+- Battle-tested patterns and best practices
+- Security considerations and error handling
+- Performance optimization guidelines
 
-2. **Copy relevant rules** to your project's `.cursor/rules/` directory:
-   ```bash
-   cp cursor-rules/.cursor/rules/*.mdc your-project/.cursor/rules/
-   ```
+### ✅ Type Safe
+- Full TypeScript support with proper type definitions
+- Zod schema validation patterns
+- Type-safe database operations
 
-3. **Rules activate automatically** when you open matching files in Cursor
+### ✅ Modern Stack
+- Latest framework versions and patterns
+- Server Components and App Router
+- Edge computing and real-time features
 
-## 💡 Contributing
+### ✅ Comprehensive Examples
+- Complete code examples for every pattern
+- Integration examples between services
+- Testing strategies and utilities
 
-We welcome contributions! To add new rules or improve existing ones:
+## 📦 Template Package.json
 
-1. Fork the repository
-2. Create MDC files with proper metadata headers
-3. Follow the established patterns and best practices
-4. Submit a pull request with clear descriptions
+Includes a complete `package.json.template` with all necessary dependencies for modern web development:
 
-### Rule Format
-```markdown
----
-rule_type: auto_attached
-title: Your Technology Rules  
-description: Brief description of what this rule covers
-patterns: ["**/*.ext", "**/config.*"]
----
+- **Frameworks**: Next.js, React
+- **Styling**: Tailwind CSS, Shadcn/ui
+- **Forms**: React Hook Form, Zod validation
+- **Data**: Tanstack Query, Drizzle ORM
+- **Auth**: Clerk, Better Auth
+- **Payments**: Stripe
+- **Analytics**: Tinybird
+- **Animation**: Framer Motion
+- **Backend**: Supabase, Inngest, Trigger.dev
+- **Development**: TypeScript, ESLint, Prettier
 
-# Your Technology Rules
+## 🎨 Best Practices Included
 
-## Setup & Configuration
-...
-```
+- **Performance**: Optimization patterns for React, Next.js, and animations
+- **Security**: Authentication, authorization, and data validation
+- **Accessibility**: ARIA attributes, keyboard navigation, and screen readers
+- **Testing**: Unit tests, integration tests, and E2E testing strategies
+- **Error Handling**: Comprehensive error boundaries and user feedback
+- **Type Safety**: Strict TypeScript patterns and validation schemas
 
-## 📖 Documentation
+## 🌟 Why These Rules?
 
-Each rule file contains:
-- **Setup instructions** and configuration
-- **Code patterns** and examples  
-- **Best practices** and conventions
-- **Performance optimizations**
-- **Security considerations**
-- **Testing approaches**
+1. **Comprehensive Coverage** - Everything you need for modern web development
+2. **Production Tested** - Patterns used in real-world applications
+3. **Performance Focused** - Optimization best practices throughout
+4. **Developer Experience** - Enhanced autocomplete and intelligent suggestions
+5. **Maintainable Code** - Consistent patterns and clean architecture
 
-## 🚀 What's Included
+## 🤝 Contributing
 
-### Framework Rules
-- Next.js 15 App Router patterns
-- React 18 component patterns  
-- TypeScript advanced patterns
+Feel free to submit issues and enhancement requests! These rules are designed to evolve with the modern web development landscape.
 
-### Database Rules
-- Drizzle ORM schema definitions
-- Query optimization patterns
-- Migration strategies
+## 📄 License
 
-### UI Rules  
-- Shadcn/ui component patterns
-- Tailwind CSS utilities
-- Responsive design patterns
-
-### Backend Rules
-- Cloudflare Workers edge functions
-- Tinybird analytics pipelines
-- Authentication flows
-
-### Tool Integration
-- Model Context Protocols
-- Development workflows
-- Deployment strategies
-
-## 🎉 Benefits
-
-- **Faster development** with intelligent suggestions
-- **Consistent code quality** across your team
-- **Framework best practices** automatically applied
-- **Reduced boilerplate** through smart templates
-- **Performance optimizations** built into suggestions
+MIT License - feel free to use these rules in your projects!
 
 ---
 
-**Ready to supercharge your development workflow?** Start using these cursor rules today and experience the power of AI-assisted coding with deep framework knowledge! 🚀 
+**Happy coding with enhanced AI assistance!** 🚀 
