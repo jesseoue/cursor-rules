@@ -1,0 +1,529 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: Fly.io platform deployment best practices including app configuration, Dockerfile optimization, and monitoring
+globs: []
+alwaysApply: false
+---
+
+<fly-io-best-practices>
+
+<title>Fly.io Platform Deployment Best Practices</title>
+
+<app-configuration>
+<rules>
+- Use `fly.toml` for comprehensive application configuration
+- Configure proper resource allocation (CPU, memory, disk)
+- Set up health checks and graceful shutdown handling
+- Configure environment variables and secrets appropriately
+- Use proper scaling strategies for different workloads
+- Implement proper networking and service discovery
+</rules>
+
+<examples>
+<example type="good">
+```toml
+# fly.toml
+app = "my-nextjs-app"
+primary_region = "sjc"
+
+[build]
+  builder = "heroku/buildpacks:20"
+  buildpacks = ["heroku/nodejs"]
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "5s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    protocol = "http"
+    timeout = "5s"
+
+[machine]
+  memory = "1GB"
+  cpu_kind = "shared"
+  cpus = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1GB"
+
+[deploy]
+  release_command = "npm run db:migrate"
+  strategy = "rolling"
+  max_unavailable = 0.33
+
+[mounts]
+  source = "data"
+  destination = "/data"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+  [[services.tcp_checks]]
+    grace_period = "1s"
+    interval = "15s"
+    restart_limit = 0
+    timeout = "2s"
+
+  [[services.http_checks]]
+    interval = "10s"
+    grace_period = "5s"
+    method = "get"
+    path = "/health"
+    protocol = "http"
+    timeout = "2s"
+    tls_skip_verify = false
+    headers = {}
+```
+</example>
+</examples>
+</app-configuration>
+
+<dockerfile-optimization>
+<rules>
+- Use multi-stage builds for smaller image sizes
+- Use specific base image versions for reproducibility
+- Minimize layers and optimize for Docker layer caching
+- Run as non-root user for security
+- Use proper .dockerignore to exclude unnecessary files
+- Implement proper health checks in containers
+</rules>
+
+<examples>
+<example type="good">
+```dockerfile
+# Dockerfile
+FROM node:18-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Install dependencies based on the preferred package manager
+COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
+RUN \
+  if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
+  elif [ -f package-lock.json ]; then npm ci; \
+  elif [ -f pnpm-lock.yaml ]; then yarn global add pnpm && pnpm i --frozen-lockfile; \
+  else echo "Lockfile not found." && exit 1; \
+  fi
+
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Build application
+RUN \
+  if [ -f yarn.lock ]; then yarn run build; \
+  elif [ -f package-lock.json ]; then npm run build; \
+  elif [ -f pnpm-lock.yaml ]; then yarn global add pnpm && pnpm run build; \
+  else echo "Lockfile not found." && exit 1; \
+  fi
+
+# Production image
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy built application
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+ENV PORT=3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:$PORT/health || exit 1
+
+CMD ["node", "server.js"]
+```
+
+```dockerignore
+# .dockerignore
+node_modules
+npm-debug.log
+.next
+.env*.local
+.git
+.gitignore
+README.md
+.vercel
+.nyc_output
+coverage
+.DS_Store
+*.log
+```
+</example>
+</examples>
+</dockerfile-optimization>
+
+<deployment-strategies>
+<rules>
+- Use rolling deployments for zero-downtime updates
+- Implement proper health checks and graceful shutdowns
+- Configure autoscaling based on metrics
+- Use Fly Secrets for environment variables
+- Implement proper database migration strategies
+- Monitor deployment status and rollback if needed
+</rules>
+
+<examples>
+<example type="good">
+```bash
+# Deploy commands
+flyctl auth login
+flyctl launch --no-deploy
+flyctl secrets set DATABASE_URL=$DATABASE_URL
+flyctl secrets set JWT_SECRET=$JWT_SECRET
+flyctl deploy
+
+# Scaling commands
+flyctl scale count 3
+flyctl scale memory 2048
+flyctl scale vm shared-cpu-2x
+
+# Zero-downtime deployment
+flyctl deploy --strategy rolling
+flyctl deploy --wait-timeout 300
+
+# Database migration
+flyctl ssh console -C "npm run db:migrate"
+```
+
+```typescript
+// Graceful shutdown handling
+// lib/graceful-shutdown.ts
+export function setupGracefulShutdown(server: any) {
+  const signals = ['SIGTERM', 'SIGINT', 'SIGUSR2'];
+  
+  signals.forEach(signal => {
+    process.on(signal, async () => {
+      console.log(`Received ${signal}, starting graceful shutdown...`);
+      
+      // Stop accepting new connections
+      server.close(async () => {
+        console.log('HTTP server closed');
+        
+        // Close database connections
+        await closeDatabaseConnections();
+        
+        // Cleanup other resources
+        await cleanup();
+        
+        console.log('Graceful shutdown completed');
+        process.exit(0);
+      });
+      
+      // Force shutdown after timeout
+      setTimeout(() => {
+        console.error('Forced shutdown after timeout');
+        process.exit(1);
+      }, 10000);
+    });
+  });
+}
+
+async function closeDatabaseConnections() {
+  // Close database connections
+  console.log('Closing database connections...');
+}
+
+async function cleanup() {
+  // Cleanup other resources
+  console.log('Cleaning up resources...');
+}
+```
+</example>
+</examples>
+</deployment-strategies>
+
+<monitoring-logging>
+<rules>
+- Use structured logging with proper levels
+- Monitor application metrics and performance
+- Set up log aggregation and analysis
+- Implement proper error tracking
+- Monitor resource usage and scaling metrics
+- Use Fly's built-in monitoring features
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Structured logging
+// lib/logger.ts
+import winston from 'winston';
+
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: {
+    service: process.env.FLY_APP_NAME || 'app',
+    region: process.env.FLY_REGION || 'unknown',
+    instance: process.env.FLY_MACHINE_ID || 'unknown',
+  },
+  transports: [
+    new winston.transports.Console(),
+  ],
+});
+
+export default logger;
+
+// Health check endpoint
+// pages/api/health.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import logger from '@/lib/logger';
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  try {
+    // Check database connectivity
+    const dbHealthy = await checkDatabase();
+    
+    // Check external services
+    const servicesHealthy = await checkExternalServices();
+    
+    const health = {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      checks: {
+        database: dbHealthy ? 'healthy' : 'unhealthy',
+        services: servicesHealthy ? 'healthy' : 'unhealthy',
+      },
+      metadata: {
+        region: process.env.FLY_REGION,
+        instance: process.env.FLY_MACHINE_ID,
+        uptime: process.uptime(),
+      },
+    };
+    
+    const allHealthy = dbHealthy && servicesHealthy;
+    const statusCode = allHealthy ? 200 : 503;
+    
+    if (!allHealthy) {
+      logger.warn('Health check failed', health);
+    }
+    
+    res.status(statusCode).json(health);
+  } catch (error) {
+    logger.error('Health check error', error);
+    res.status(503).json({
+      status: 'unhealthy',
+      error: 'Health check failed',
+      timestamp: new Date().toISOString(),
+    });
+  }
+}
+
+async function checkDatabase(): Promise<boolean> {
+  // Database connectivity check
+  return true;
+}
+
+async function checkExternalServices(): Promise<boolean> {
+  // External services check
+  return true;
+}
+```
+</example>
+</examples>
+</monitoring-logging>
+
+<networking-volumes>
+<rules>
+- Use Fly's private networking for service communication
+- Configure volumes for persistent data storage
+- Implement proper service discovery
+- Use load balancing for high availability
+- Configure SSL/TLS certificates appropriately
+- Implement proper backup strategies for volumes
+</rules>
+
+<examples>
+<example type="good">
+```bash
+# Volume management
+flyctl volumes create data --region sjc --size 10
+flyctl volumes list
+flyctl volumes extend data --size 20
+
+# Networking
+flyctl ips allocate-v4 --shared
+flyctl ips allocate-v6
+flyctl certs create example.com
+
+# Service discovery
+flyctl info
+flyctl status
+flyctl logs
+```
+
+```typescript
+// Service discovery and communication
+// lib/service-discovery.ts
+export class ServiceDiscovery {
+  private baseUrl: string;
+  
+  constructor() {
+    // Use Fly's internal networking
+    this.baseUrl = process.env.FLY_APP_NAME 
+      ? `http://${process.env.FLY_APP_NAME}.internal:8080`
+      : 'http://localhost:8080';
+  }
+  
+  async callService(serviceName: string, endpoint: string, options: RequestInit = {}) {
+    const url = `http://${serviceName}.internal:8080${endpoint}`;
+    
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Fly-Forwarded-For': process.env.FLY_MACHINE_ID || 'unknown',
+          ...options.headers,
+        },
+        ...options,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Service call failed: ${response.status}`);
+      }
+      
+      return response.json();
+    } catch (error) {
+      console.error(`Service discovery error for ${serviceName}:`, error);
+      throw error;
+    }
+  }
+}
+
+// Volume management
+// lib/volume-utils.ts
+import fs from 'fs/promises';
+import path from 'path';
+
+export class VolumeManager {
+  private mountPath: string;
+  
+  constructor(mountPath = '/data') {
+    this.mountPath = mountPath;
+  }
+  
+  async ensureDirectory(dirPath: string) {
+    const fullPath = path.join(this.mountPath, dirPath);
+    await fs.mkdir(fullPath, { recursive: true });
+    return fullPath;
+  }
+  
+  async writeFile(filePath: string, data: string | Buffer) {
+    const fullPath = path.join(this.mountPath, filePath);
+    await fs.writeFile(fullPath, data);
+  }
+  
+  async readFile(filePath: string) {
+    const fullPath = path.join(this.mountPath, filePath);
+    return fs.readFile(fullPath, 'utf-8');
+  }
+  
+  async exists(filePath: string) {
+    try {
+      const fullPath = path.join(this.mountPath, filePath);
+      await fs.access(fullPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+```
+</example>
+</examples>
+</networking-volumes>
+
+<best-practices>
+<performance>
+- Use shared CPU instances for cost optimization
+- Scale based on actual metrics and usage patterns
+- Implement proper caching strategies
+- Use CDN for static assets
+- Optimize Docker images for faster deployments
+- Monitor and optimize memory usage
+</performance>
+
+<security>
+- Use Fly Secrets for sensitive environment variables
+- Run containers as non-root users
+- Implement proper network security
+- Use HTTPS everywhere with proper certificates
+- Regular security updates and vulnerability scanning
+- Implement proper access controls
+</security>
+
+<reliability>
+- Use multiple regions for high availability
+- Implement proper health checks and monitoring
+- Use persistent volumes for stateful applications
+- Implement graceful shutdown handling
+- Monitor and alert on critical metrics
+- Have proper backup and disaster recovery plans
+</reliability>
+
+<cost-optimization>
+- Use autoscaling to optimize resource usage
+- Stop machines when not in use
+- Right-size your instances based on actual usage
+- Use shared resources where appropriate
+- Monitor costs and usage patterns
+- Implement proper resource cleanup
+</cost-optimization>
+</best-practices>
+
+</fly-io-best-practices>

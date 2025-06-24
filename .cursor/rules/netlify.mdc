@@ -1,0 +1,979 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+description: Netlify platform development and deployment best practices including serverless functions, Edge Functions, and build optimization
+globs: []
+alwaysApply: false
+---
+
+<netlify-best-practices>
+
+<title>Netlify Platform Development and Deployment Best Practices</title>
+
+<project-configuration>
+<rules>
+- Use `netlify.toml` for comprehensive site configuration
+- Configure proper build settings and environment variables
+- Set up custom headers and redirects appropriately
+- Use proper caching strategies for static assets
+- Configure branch deploys for staging environments
+- Implement proper security headers and CSP policies
+</rules>
+
+<examples>
+<example type="good">
+```toml
+# netlify.toml
+[build]
+  publish = "out"
+  command = "npm run build"
+  functions = "netlify/functions"
+  edge_functions = "netlify/edge-functions"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_VERSION = "9"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Redirect rules
+[[redirects]]
+  from = "/old-path/*"
+  to = "/new-path/:splat"
+  status = 301
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers for security and performance
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Environment-specific configuration
+[context.production.environment]
+  NODE_ENV = "production"
+  NEXT_PUBLIC_SITE_URL = "https://mysite.com"
+
+[context.deploy-preview.environment]
+  NODE_ENV = "staging"
+  NEXT_PUBLIC_SITE_URL = "https://deploy-preview-$REVIEW_ID--mysite.netlify.app"
+
+[context.branch-deploy.environment]
+  NODE_ENV = "development"
+
+# Edge Functions configuration
+[[edge_functions]]
+  function = "geo-location"
+  path = "/api/location"
+
+[[edge_functions]]
+  function = "auth-middleware"
+  path = "/dashboard/*"
+
+# Function configuration
+[functions."api-*"]
+  node_bundler = "esbuild"
+  external_node_modules = ["aws-sdk"]
+  included_files = ["data/*.json"]
+```
+</example>
+</examples>
+</project-configuration>
+
+<serverless-functions>
+<rules>
+- Use TypeScript for better development experience
+- Implement proper error handling and status codes
+- Use environment variables for configuration
+- Optimize bundle size and cold start performance
+- Implement proper CORS handling
+- Use appropriate HTTP methods and status codes
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// netlify/functions/api-users.ts
+import type { Handler, HandlerEvent, HandlerContext } from '@netlify/functions';
+import { z } from 'zod';
+
+// Schema validation
+const CreateUserSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  role: z.enum(['user', 'admin']).default('user'),
+});
+
+const UpdateUserSchema = CreateUserSchema.partial();
+
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+};
+
+export const handler: Handler = async (event: HandlerEvent, context: HandlerContext) => {
+  // Handle CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: '',
+    };
+  }
+
+  try {
+    const path = event.path.replace('/.netlify/functions/api-users', '');
+    const method = event.httpMethod;
+
+    switch (method) {
+      case 'GET':
+        return await handleGetUsers(event);
+      case 'POST':
+        return await handleCreateUser(event);
+      case 'PUT':
+        return await handleUpdateUser(event, path);
+      case 'DELETE':
+        return await handleDeleteUser(event, path);
+      default:
+        return {
+          statusCode: 405,
+          headers: corsHeaders,
+          body: JSON.stringify({ error: 'Method not allowed' }),
+        };
+    }
+  } catch (error) {
+    console.error('Function error:', error);
+    
+    return {
+      statusCode: 500,
+      headers: corsHeaders,
+      body: JSON.stringify({ 
+        error: 'Internal server error',
+        requestId: context.awsRequestId,
+      }),
+    };
+  }
+};
+
+async function handleGetUsers(event: HandlerEvent) {
+  const { queryStringParameters } = event;
+  const page = parseInt(queryStringParameters?.page || '1');
+  const limit = parseInt(queryStringParameters?.limit || '10');
+  
+  // Simulate database query
+  const users = await getUsersFromDatabase({ page, limit });
+  
+  return {
+    statusCode: 200,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      users,
+      pagination: {
+        page,
+        limit,
+        total: users.length,
+      },
+    }),
+  };
+}
+
+async function handleCreateUser(event: HandlerEvent) {
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const userData = CreateUserSchema.parse(body);
+    
+    const newUser = await createUserInDatabase(userData);
+    
+    return {
+      statusCode: 201,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(newUser),
+    };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          error: 'Validation error',
+          details: error.errors,
+        }),
+      };
+    }
+    throw error;
+  }
+}
+
+// Database helpers (implement based on your database)
+async function getUsersFromDatabase(params: { page: number; limit: number }) {
+  // Implementation depends on your database
+  return [];
+}
+
+async function createUserInDatabase(userData: any) {
+  // Implementation depends on your database
+  return { id: '1', ...userData };
+}
+```
+</example>
+</examples>
+</serverless-functions>
+
+<edge-functions>
+<rules>
+- Use Edge Functions for global low-latency operations
+- Keep Edge Functions lightweight and fast
+- Implement proper geo-location and personalization
+- Use proper caching strategies
+- Handle errors gracefully with fallbacks
+- Use Deno runtime APIs and standards
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// netlify/edge-functions/geo-location.ts
+import type { Context } from '@netlify/edge-functions';
+
+export default async (request: Request, context: Context) => {
+  const { geo, ip } = context;
+  
+  // Get user's location data
+  const locationData = {
+    country: geo?.country?.name || 'Unknown',
+    countryCode: geo?.country?.code || 'XX',
+    city: geo?.city || 'Unknown',
+    region: geo?.subdivision?.name || 'Unknown',
+    timezone: geo?.timezone || 'UTC',
+    ip: ip,
+  };
+  
+  // Customize response based on location
+  if (geo?.country?.code === 'US') {
+    locationData.currency = 'USD';
+    locationData.locale = 'en-US';
+  } else if (geo?.country?.code === 'GB') {
+    locationData.currency = 'GBP';
+    locationData.locale = 'en-GB';
+  } else if (geo?.country?.code === 'DE') {
+    locationData.currency = 'EUR';
+    locationData.locale = 'de-DE';
+  } else {
+    locationData.currency = 'USD';
+    locationData.locale = 'en-US';
+  }
+  
+  return new Response(JSON.stringify(locationData), {
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=60',
+    },
+  });
+};
+
+// netlify/edge-functions/auth-middleware.ts
+import type { Context } from '@netlify/edge-functions';
+
+export default async (request: Request, context: Context) => {
+  const url = new URL(request.url);
+  
+  // Check for authentication cookie
+  const authCookie = context.cookies.get('auth-token');
+  
+  if (!authCookie) {
+    // Redirect to login
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: `/login?redirect=${encodeURIComponent(url.pathname)}`,
+      },
+    });
+  }
+  
+  try {
+    // Verify JWT token (simplified)
+    const isValid = await verifyJWT(authCookie);
+    
+    if (!isValid) {
+      // Clear invalid cookie and redirect
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: '/login',
+          'Set-Cookie': 'auth-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+        },
+      });
+    }
+    
+    // Add user info to request headers
+    const response = await context.next();
+    response.headers.set('X-User-Authenticated', 'true');
+    
+    return response;
+  } catch (error) {
+    console.error('Auth middleware error:', error);
+    
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: '/login',
+      },
+    });
+  }
+};
+
+async function verifyJWT(token: string): Promise<boolean> {
+  // Implement JWT verification logic
+  // This is a simplified example
+  try {
+    // Use crypto.subtle or a JWT library compatible with Deno
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// netlify/edge-functions/ab-test.ts
+import type { Context } from '@netlify/edge-functions';
+
+export default async (request: Request, context: Context) => {
+  const url = new URL(request.url);
+  
+  // Get or set A/B test variant
+  let variant = context.cookies.get('ab-test-variant');
+  
+  if (!variant) {
+    // Assign random variant
+    variant = Math.random() < 0.5 ? 'A' : 'B';
+    
+    // Set cookie for 30 days
+    const response = await context.next();
+    response.headers.set(
+      'Set-Cookie',
+      `ab-test-variant=${variant}; Path=/; Max-Age=2592000; SameSite=Lax`
+    );
+    
+    return response;
+  }
+  
+  // Continue with existing variant
+  const response = await context.next();
+  response.headers.set('X-AB-Test-Variant', variant);
+  
+  return response;
+};
+```
+</example>
+</examples>
+</edge-functions>
+
+<forms-handling>
+<rules>
+- Use Netlify Forms for simple form handling
+- Implement proper spam protection with reCAPTCHA
+- Use custom form handlers for complex validation
+- Set up proper form notifications and integrations
+- Implement file upload handling appropriately
+- Use proper error handling and user feedback
+</rules>
+
+<examples>
+<example type="good">
+```html
+<!-- Static form with Netlify Forms -->
+<form name="contact" method="POST" data-netlify="true" data-netlify-recaptcha="true">
+  <input type="hidden" name="form-name" value="contact" />
+  
+  <div>
+    <label for="name">Name:</label>
+    <input type="text" id="name" name="name" required />
+  </div>
+  
+  <div>
+    <label for="email">Email:</label>
+    <input type="email" id="email" name="email" required />
+  </div>
+  
+  <div>
+    <label for="message">Message:</label>
+    <textarea id="message" name="message" required></textarea>
+  </div>
+  
+  <div data-netlify-recaptcha="true"></div>
+  
+  <button type="submit">Send Message</button>
+</form>
+```
+
+```typescript
+// netlify/functions/form-handler.ts
+import type { Handler } from '@netlify/functions';
+import { z } from 'zod';
+
+const ContactFormSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Valid email is required'),
+  message: z.string().min(10, 'Message must be at least 10 characters'),
+  'g-recaptcha-response': z.string().min(1, 'reCAPTCHA is required'),
+});
+
+export const handler: Handler = async (event) => {
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      body: JSON.stringify({ error: 'Method not allowed' }),
+    };
+  }
+
+  try {
+    // Parse form data
+    const formData = new URLSearchParams(event.body || '');
+    const data = Object.fromEntries(formData);
+    
+    // Validate form data
+    const validatedData = ContactFormSchema.parse(data);
+    
+    // Verify reCAPTCHA
+    const recaptchaValid = await verifyRecaptcha(validatedData['g-recaptcha-response']);
+    if (!recaptchaValid) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'reCAPTCHA verification failed' }),
+      };
+    }
+    
+    // Process form submission
+    await processContactForm(validatedData);
+    
+    // Send notification email
+    await sendNotificationEmail(validatedData);
+    
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        success: true, 
+        message: 'Form submitted successfully' 
+      }),
+    };
+  } catch (error) {
+    console.error('Form processing error:', error);
+    
+    if (error instanceof z.ZodError) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error: 'Validation error',
+          details: error.errors,
+        }),
+      };
+    }
+    
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Internal server error' }),
+    };
+  }
+};
+
+async function verifyRecaptcha(token: string): Promise<boolean> {
+  const secret = process.env.RECAPTCHA_SECRET_KEY;
+  if (!secret) return false;
+  
+  const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: `secret=${secret}&response=${token}`,
+  });
+  
+  const result = await response.json();
+  return result.success;
+}
+
+async function processContactForm(data: any) {
+  // Save to database or external service
+  console.log('Processing contact form:', data);
+}
+
+async function sendNotificationEmail(data: any) {
+  // Send email notification
+  console.log('Sending notification email:', data);
+}
+```
+</example>
+</examples>
+</forms-handling>
+
+<build-optimization>
+<rules>
+- Configure proper build commands and dependencies
+- Use build plugins for optimization and functionality
+- Implement proper caching strategies for builds
+- Use environment-specific build configurations
+- Optimize asset processing and bundling
+- Configure proper deployment previews
+</rules>
+
+<examples>
+<example type="good">
+```toml
+# netlify.toml - Advanced build configuration
+[build]
+  publish = "dist"
+  command = "npm run build"
+  functions = "netlify/functions"
+  edge_functions = "netlify/edge-functions"
+
+[build.processing]
+  skip_processing = false
+
+[build.processing.css]
+  bundle = true
+  minify = true
+
+[build.processing.js]
+  bundle = true
+  minify = true
+
+[build.processing.html]
+  pretty_urls = true
+
+[build.processing.images]
+  compress = true
+
+# Build plugins
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[[plugins]]
+  package = "netlify-plugin-inline-critical-css"
+
+[[plugins]]
+  package = "@netlify/plugin-lighthouse"
+  
+  [plugins.inputs]
+    output_path = "reports/lighthouse.html"
+
+# Environment-specific builds
+[context.production]
+  command = "npm run build:prod"
+  
+  [context.production.environment]
+    NODE_ENV = "production"
+    NEXT_TELEMETRY_DISABLED = "1"
+
+[context.deploy-preview]
+  command = "npm run build:preview"
+  
+  [context.deploy-preview.environment]
+    NODE_ENV = "preview"
+
+[context.branch-deploy]
+  command = "npm run build:dev"
+  
+  [context.branch-deploy.environment]
+    NODE_ENV = "development"
+
+# Split testing
+[context.split1]
+  command = "npm run build"
+  
+  [context.split1.environment]
+    FEATURE_FLAG_NEW_UI = "true"
+```
+
+```json
+// package.json scripts for different build contexts
+{
+  "scripts": {
+    "build": "next build && next export",
+    "build:prod": "NODE_ENV=production next build && next export",
+    "build:preview": "NODE_ENV=preview next build && next export",
+    "build:dev": "NODE_ENV=development next build && next export",
+    "netlify:dev": "netlify dev",
+    "netlify:build": "netlify build",
+    "netlify:deploy": "netlify deploy --prod"
+  }
+}
+```
+</example>
+</examples>
+</build-optimization>
+
+<performance-optimization>
+<rules>
+- Use Netlify CDN for global content delivery
+- Implement proper asset optimization and compression
+- Use prerendering for dynamic routes where appropriate
+- Configure proper caching headers
+- Implement image optimization with Netlify Large Media
+- Use Edge Functions for performance-critical operations
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Performance optimization helpers
+// netlify/functions/image-proxy.ts
+import type { Handler } from '@netlify/functions';
+
+export const handler: Handler = async (event) => {
+  const { url, width, height, quality = 80, format = 'webp' } = event.queryStringParameters || {};
+  
+  if (!url) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'URL parameter is required' }),
+    };
+  }
+  
+  try {
+    // Use Netlify's image transformation service
+    const transformedUrl = `/.netlify/images?url=${encodeURIComponent(url)}&w=${width}&h=${height}&q=${quality}&f=${format}`;
+    
+    const response = await fetch(transformedUrl);
+    const imageBuffer = await response.arrayBuffer();
+    
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': `image/${format}`,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      },
+      body: Buffer.from(imageBuffer).toString('base64'),
+      isBase64Encoded: true,
+    };
+  } catch (error) {
+    console.error('Image optimization error:', error);
+    
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Image optimization failed' }),
+    };
+  }
+};
+
+// Performance monitoring
+// netlify/edge-functions/performance-monitor.ts
+import type { Context } from '@netlify/edge-functions';
+
+export default async (request: Request, context: Context) => {
+  const startTime = Date.now();
+  
+  const response = await context.next();
+  
+  const endTime = Date.now();
+  const processingTime = endTime - startTime;
+  
+  // Add performance headers
+  response.headers.set('X-Response-Time', `${processingTime}ms`);
+  response.headers.set('X-Edge-Location', context.geo?.city || 'Unknown');
+  
+  // Log slow responses
+  if (processingTime > 1000) {
+    console.warn(`Slow response: ${request.url} took ${processingTime}ms`);
+  }
+  
+  return response;
+};
+```
+</example>
+</examples>
+</performance-optimization>
+
+<security-best-practices>
+<rules>
+- Configure proper security headers in netlify.toml
+- Use environment variables for sensitive data
+- Implement proper CORS configuration
+- Use HTTPS everywhere with proper SSL settings
+- Configure Content Security Policy appropriately
+- Implement rate limiting for API endpoints
+</rules>
+
+<examples>
+<example type="good">
+```toml
+# Security headers configuration
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.example.com"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# API security
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "https://yourdomain.com"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+    Access-Control-Max-Age = "86400"
+```
+
+```typescript
+// Rate limiting middleware
+// netlify/functions/rate-limiter.ts
+import type { Handler } from '@netlify/functions';
+
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
+function getRateLimit(ip: string, windowMs: number = 60000, maxRequests: number = 10) {
+  const now = Date.now();
+  const record = rateLimitStore.get(ip);
+  
+  if (!record || now > record.resetTime) {
+    rateLimitStore.set(ip, { count: 1, resetTime: now + windowMs });
+    return { allowed: true, remaining: maxRequests - 1 };
+  }
+  
+  if (record.count >= maxRequests) {
+    return { allowed: false, remaining: 0 };
+  }
+  
+  record.count++;
+  return { allowed: true, remaining: maxRequests - record.count };
+}
+
+export function withRateLimit(handler: Handler, options = {}): Handler {
+  return async (event, context) => {
+    const ip = event.headers['x-forwarded-for'] || event.headers['x-bb-ip'] || 'unknown';
+    const { allowed, remaining } = getRateLimit(ip);
+    
+    if (!allowed) {
+      return {
+        statusCode: 429,
+        headers: {
+          'Retry-After': '60',
+          'X-RateLimit-Remaining': '0',
+        },
+        body: JSON.stringify({ error: 'Too many requests' }),
+      };
+    }
+    
+    const response = await handler(event, context);
+    
+    // Add rate limit headers to response
+    if (response.headers) {
+      response.headers['X-RateLimit-Remaining'] = remaining.toString();
+    } else {
+      response.headers = { 'X-RateLimit-Remaining': remaining.toString() };
+    }
+    
+    return response;
+  };
+}
+```
+</example>
+</examples>
+</security-best-practices>
+
+<monitoring-analytics>
+<rules>
+- Use Netlify Analytics for site performance insights
+- Implement proper logging for functions and edge functions
+- Set up error tracking and monitoring
+- Use webhook notifications for deployment events
+- Monitor Core Web Vitals and performance metrics
+- Set up alerts for critical issues
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Logging and monitoring utilities
+// netlify/functions/utils/logger.ts
+export const logger = {
+  info: (message: string, meta?: any) => {
+    console.log(JSON.stringify({
+      level: 'info',
+      message,
+      timestamp: new Date().toISOString(),
+      ...meta,
+    }));
+  },
+  
+  error: (message: string, error?: Error, meta?: any) => {
+    console.error(JSON.stringify({
+      level: 'error',
+      message,
+      error: error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      } : undefined,
+      timestamp: new Date().toISOString(),
+      ...meta,
+    }));
+  },
+  
+  warn: (message: string, meta?: any) => {
+    console.warn(JSON.stringify({
+      level: 'warn',
+      message,
+      timestamp: new Date().toISOString(),
+      ...meta,
+    }));
+  },
+};
+
+// Error tracking
+// netlify/functions/error-handler.ts
+import type { Handler } from '@netlify/functions';
+import { logger } from './utils/logger';
+
+export function withErrorHandling(handler: Handler): Handler {
+  return async (event, context) => {
+    try {
+      return await handler(event, context);
+    } catch (error) {
+      logger.error('Function error', error as Error, {
+        functionName: context.functionName,
+        requestId: context.awsRequestId,
+        path: event.path,
+        httpMethod: event.httpMethod,
+      });
+      
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error: 'Internal server error',
+          requestId: context.awsRequestId,
+        }),
+      };
+    }
+  };
+}
+
+// Webhook for deployment notifications
+// netlify/functions/deploy-webhook.ts
+import type { Handler } from '@netlify/functions';
+
+export const handler: Handler = async (event) => {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method not allowed' };
+  }
+  
+  try {
+    const payload = JSON.parse(event.body || '{}');
+    const { state, context, branch } = payload;
+    
+    if (state === 'ready') {
+      await notifyDeploymentSuccess(context, branch);
+    } else if (state === 'error') {
+      await notifyDeploymentFailure(context, branch);
+    }
+    
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ received: true }),
+    };
+  } catch (error) {
+    logger.error('Webhook processing error', error as Error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Processing failed' }),
+    };
+  }
+};
+
+async function notifyDeploymentSuccess(context: string, branch: string) {
+  // Send notifications (Slack, email, etc.)
+  logger.info('Deployment successful', { context, branch });
+}
+
+async function notifyDeploymentFailure(context: string, branch: string) {
+  // Send failure notifications
+  logger.error('Deployment failed', undefined, { context, branch });
+}
+```
+</example>
+</examples>
+</monitoring-analytics>
+
+<best-practices>
+<development>
+- Use Netlify CLI for local development and testing
+- Implement proper environment variable management
+- Use TypeScript for better development experience
+- Test functions locally before deployment
+- Use proper Git workflows with branch deploys
+- Implement comprehensive error handling
+</development>
+
+<performance>
+- Leverage Netlify CDN for global content delivery
+- Use Edge Functions for low-latency operations
+- Implement proper caching strategies
+- Optimize build times with proper dependency management
+- Use asset optimization and compression
+- Monitor and optimize Core Web Vitals
+</performance>
+
+<security>
+- Always use HTTPS with proper SSL configuration
+- Implement proper security headers
+- Use environment variables for sensitive data
+- Configure proper CORS policies
+- Implement rate limiting for API endpoints
+- Regular security audits and updates
+</security>
+
+<deployment>
+- Use atomic deployments for zero-downtime releases
+- Configure proper branch deployment strategies
+- Implement deployment previews for testing
+- Use build plugins for automation
+- Monitor deployment health and performance
+- Implement proper rollback strategies
+</deployment>
+</best-practices>
+
+</netlify-best-practices>

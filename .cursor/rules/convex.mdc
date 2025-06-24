@@ -1,0 +1,651 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+description: Convex backend development best practices with function definitions, schema management, and React integration
+globs: []
+alwaysApply: false
+---
+
+<convex-guidelines>
+
+<title>Convex Backend Development Best Practices</title>
+
+<function-guidelines>
+<new-function-syntax>
+<rules>
+- ALWAYS use the new function syntax for Convex functions
+- Include proper argument and return validators for all functions
+- Use TypeScript for better type safety and development experience
+- If a function doesn't return anything, include `returns: v.null()`
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+import { query, mutation, action } from "./_generated/server";
+import { v } from "convex/values";
+
+export const getUser = query({
+  args: { userId: v.id("users") },
+  returns: v.union(v.object({
+    _id: v.id("users"),
+    name: v.string(),
+    email: v.string(),
+  }), v.null()),
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.userId);
+  },
+});
+
+export const createUser = mutation({
+  args: { 
+    name: v.string(), 
+    email: v.string() 
+  },
+  returns: v.id("users"),
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("users", {
+      name: args.name,
+      email: args.email,
+    });
+  },
+});
+```
+</example>
+</examples>
+</new-function-syntax>
+
+<http-endpoints>
+<rules>
+- Define HTTP endpoints in `convex/http.ts` using `httpAction`
+- Use proper HTTP methods and status codes
+- Handle request parsing and response formatting correctly
+- Implement proper error handling for HTTP endpoints
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+import { httpRouter } from "convex/server";
+import { httpAction } from "./_generated/server";
+import { api } from "./_generated/api";
+
+const http = httpRouter();
+
+http.route({
+  path: "/users",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const userId = await ctx.runMutation(api.users.create, body);
+      return new Response(JSON.stringify({ userId }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
+export default http;
+```
+</example>
+</examples>
+</http-endpoints>
+
+<function-registration>
+<rules>
+- Use `query`, `mutation`, `action` for public functions (exposed to API)
+- Use `internalQuery`, `internalMutation`, `internalAction` for private functions
+- NEVER register functions through `api` or `internal` objects directly
+- Always include argument and return validators
+- Use meaningful function names that describe their purpose
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Public functions (exposed to API)
+export const listMessages = query({
+  args: { channelId: v.id("channels") },
+  returns: v.array(v.object({
+    _id: v.id("messages"),
+    content: v.string(),
+    authorId: v.id("users"),
+    _creationTime: v.number(),
+  })),
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("messages")
+      .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
+      .collect();
+  },
+});
+
+// Internal functions (private)
+export const generateAIResponse = internalAction({
+  args: { messageId: v.id("messages") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // AI processing logic
+    return null;
+  },
+});
+```
+</example>
+</examples>
+</function-registration>
+
+<function-calling>
+<rules>
+- Use `ctx.runQuery` to call queries from queries, mutations, or actions
+- Use `ctx.runMutation` to call mutations from mutations or actions
+- Use `ctx.runAction` to call actions from actions only
+- Pass `FunctionReference` objects, not function instances directly
+- Add type annotations when calling functions in the same file
+- Minimize action-to-query/mutation calls to avoid race conditions
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+import { api, internal } from "./_generated/api";
+
+export const processOrder = mutation({
+  args: { orderId: v.id("orders") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Order not found");
+    
+    // Call internal function
+    await ctx.runMutation(internal.orders.updateStatus, {
+      orderId: args.orderId,
+      status: "processing"
+    });
+    
+    // Schedule background action
+    await ctx.scheduler.runAfter(0, internal.orders.sendConfirmationEmail, {
+      orderId: args.orderId
+    });
+    
+    return null;
+  },
+});
+
+// Type annotation for same-file calls
+export const getOrderTotal = query({
+  args: { orderId: v.id("orders") },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const total: number = await ctx.runQuery(api.orders.calculateTotal, {
+      orderId: args.orderId
+    });
+    return total;
+  },
+});
+```
+</example>
+</examples>
+</function-calling>
+</function-guidelines>
+
+<schema-guidelines>
+<rules>
+- Always define schema in `convex/schema.ts`
+- Use proper TypeScript types for better development experience
+- Define indexes for efficient querying
+- Use system fields understanding (_id, _creationTime, etc.)
+- Plan your data model before implementation
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  users: defineTable({
+    email: v.string(),
+    name: v.string(),
+    role: v.union(v.literal("admin"), v.literal("user")),
+    createdAt: v.number(),
+  })
+    .index("by_email", ["email"])
+    .index("by_role", ["role"]),
+    
+  posts: defineTable({
+    title: v.string(),
+    content: v.string(),
+    authorId: v.id("users"),
+    published: v.boolean(),
+    tags: v.array(v.string()),
+  })
+    .index("by_author", ["authorId"])
+    .index("by_published", ["published"])
+    .index("by_author_published", ["authorId", "published"]),
+    
+  comments: defineTable({
+    postId: v.id("posts"),
+    authorId: v.id("users"),
+    content: v.string(),
+    parentId: v.optional(v.id("comments")),
+  })
+    .index("by_post", ["postId"])
+    .index("by_parent", ["parentId"]),
+});
+```
+</example>
+</examples>
+</schema-guidelines>
+
+<query-guidelines>
+<rules>
+- Use indexes instead of `.filter()` for better performance
+- Use `.unique()` for single document queries that must exist
+- Use `.first()` for single document queries that might not exist
+- Use `.collect()` to get all results, `.take(n)` for limited results
+- Use proper ordering with `.order('asc')` or `.order('desc')`
+- Implement pagination for large datasets
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Efficient indexed query
+export const getUserPosts = query({
+  args: { 
+    userId: v.id("users"),
+    published: v.optional(v.boolean()),
+    limit: v.optional(v.number())
+  },
+  returns: v.array(v.object({
+    _id: v.id("posts"),
+    title: v.string(),
+    content: v.string(),
+    _creationTime: v.number(),
+  })),
+  handler: async (ctx, args) => {
+    let query = ctx.db
+      .query("posts")
+      .withIndex("by_author_published", (q) => 
+        q.eq("authorId", args.userId)
+         .eq("published", args.published ?? true)
+      )
+      .order("desc");
+      
+    if (args.limit) {
+      query = query.take(args.limit);
+    }
+    
+    return await query.collect();
+  },
+});
+
+// Unique query for single result
+export const getUserByEmail = query({
+  args: { email: v.string() },
+  returns: v.union(v.object({
+    _id: v.id("users"),
+    name: v.string(),
+    email: v.string(),
+  }), v.null()),
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .unique();
+  },
+});
+```
+</example>
+</examples>
+</query-guidelines>
+
+<mutation-guidelines>
+<rules>
+- Use `ctx.db.insert()` for creating new documents
+- Use `ctx.db.patch()` for partial updates
+- Use `ctx.db.replace()` for full document replacement
+- Use `ctx.db.delete()` for removing documents
+- Implement proper validation and error handling
+- Use transactions implicitly (mutations are atomic)
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+export const updateUserProfile = mutation({
+  args: {
+    userId: v.id("users"),
+    updates: v.object({
+      name: v.optional(v.string()),
+      email: v.optional(v.string()),
+    }),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    // Validate email uniqueness if updating email
+    if (args.updates.email && args.updates.email !== user.email) {
+      const existingUser = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", args.updates.email!))
+        .first();
+      if (existingUser) {
+        throw new Error("Email already in use");
+      }
+    }
+    
+    await ctx.db.patch(args.userId, args.updates);
+    return null;
+  },
+});
+
+export const deletePost = mutation({
+  args: { postId: v.id("posts") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Delete related comments first
+    const comments = await ctx.db
+      .query("comments")
+      .withIndex("by_post", (q) => q.eq("postId", args.postId))
+      .collect();
+      
+    for (const comment of comments) {
+      await ctx.db.delete(comment._id);
+    }
+    
+    // Delete the post
+    await ctx.db.delete(args.postId);
+    return null;
+  },
+});
+```
+</example>
+</examples>
+</mutation-guidelines>
+
+<file-storage-guidelines>
+<rules>
+- Use Convex file storage for large files (images, videos, PDFs)
+- Generate signed URLs with `ctx.storage.getUrl()`
+- Query `_storage` system table for metadata
+- Implement proper file upload and management workflows
+- Handle file deletion and cleanup
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+export const getFileUrl = query({
+  args: { fileId: v.id("_storage") },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    return await ctx.storage.getUrl(args.fileId);
+  },
+});
+
+export const getFileMetadata = query({
+  args: { fileId: v.id("_storage") },
+  returns: v.union(v.object({
+    _id: v.id("_storage"),
+    _creationTime: v.number(),
+    contentType: v.optional(v.string()),
+    sha256: v.string(),
+    size: v.number(),
+  }), v.null()),
+  handler: async (ctx, args) => {
+    return await ctx.db.system.get(args.fileId);
+  },
+});
+
+export const uploadFile = mutation({
+  args: { 
+    file: v.id("_storage"),
+    name: v.string(),
+    userId: v.id("users")
+  },
+  returns: v.id("files"),
+  handler: async (ctx, args) => {
+    // Verify file exists
+    const metadata = await ctx.db.system.get(args.file);
+    if (!metadata) {
+      throw new Error("File not found");
+    }
+    
+    return await ctx.db.insert("files", {
+      storageId: args.file,
+      name: args.name,
+      userId: args.userId,
+      size: metadata.size,
+      contentType: metadata.contentType,
+    });
+  },
+});
+```
+</example>
+</examples>
+</file-storage-guidelines>
+
+<scheduling-guidelines>
+<rules>
+- Use `crons.interval()` or `crons.cron()` for scheduling
+- Define crons in `convex/crons.ts` with proper exports
+- Use FunctionReference for cron job functions
+- Schedule background tasks with `ctx.scheduler.runAfter()`
+- Handle cron job failures gracefully
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// convex/crons.ts
+import { cronJobs } from "convex/server";
+import { internal } from "./_generated/api";
+
+const crons = cronJobs();
+
+// Clean up old files every day at 2 AM
+crons.cron("cleanup old files", "0 2 * * *", internal.cleanup.deleteOldFiles, {});
+
+// Send weekly digest every Monday at 9 AM
+crons.interval("weekly digest", { hours: 168 }, internal.notifications.sendWeeklyDigest, {});
+
+export default crons;
+
+// Background task scheduling
+export const processOrder = mutation({
+  args: { orderId: v.id("orders") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.orderId, { status: "processing" });
+    
+    // Schedule follow-up tasks
+    await ctx.scheduler.runAfter(
+      1000 * 60 * 60, // 1 hour
+      internal.orders.checkPaymentStatus,
+      { orderId: args.orderId }
+    );
+    
+    return null;
+  },
+});
+```
+</example>
+</examples>
+</scheduling-guidelines>
+
+<react-integration>
+<rules>
+- Use `useQuery` for reactive data fetching
+- Use `useMutation` for server state changes
+- Follow React hooks rules strictly
+- Prefer single queries over conditional queries with "skip"
+- Handle loading states properly
+- Implement optimistic updates where appropriate
+</rules>
+
+<examples>
+<example type="good">
+```tsx
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+
+export function UserProfile({ userId }: { userId: Id<"users"> }) {
+  const user = useQuery(api.users.get, { userId });
+  const updateUser = useMutation(api.users.update);
+  
+  if (user === undefined) {
+    return <div>Loading...</div>;
+  }
+  
+  if (user === null) {
+    return <div>User not found</div>;
+  }
+  
+  const handleUpdate = async (updates: { name: string }) => {
+    try {
+      await updateUser({ userId, updates });
+    } catch (error) {
+      console.error("Failed to update user:", error);
+    }
+  };
+  
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <p>{user.email}</p>
+      {/* Update form here */}
+    </div>
+  );
+}
+
+// Conditional queries with skip
+export function ConditionalData({ shouldLoad }: { shouldLoad: boolean }) {
+  const data = useQuery(
+    api.data.fetch,
+    shouldLoad ? {} : "skip"
+  );
+  
+  if (!shouldLoad) {
+    return <div>Data loading disabled</div>;
+  }
+  
+  if (data === undefined) {
+    return <div>Loading...</div>;
+  }
+  
+  return <div>{JSON.stringify(data)}</div>;
+}
+```
+</example>
+</examples>
+</react-integration>
+
+<validator-guidelines>
+<rules>
+- Use `v.int64()` instead of deprecated `v.bigint()`
+- Use `v.record()` for key-value objects, not `v.map()` or `v.set()`
+- Implement proper validation for all function arguments and returns
+- Use union types for enums and optional values
+- Validate nested objects and arrays properly
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+import { v } from "convex/values";
+
+// Modern validator patterns
+export const createPost = mutation({
+  args: {
+    title: v.string(),
+    content: v.string(),
+    tags: v.array(v.string()),
+    metadata: v.record(v.string(), v.any()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("published"),
+      v.literal("archived")
+    ),
+    publishAt: v.optional(v.number()),
+    authorId: v.id("users"),
+  },
+  returns: v.object({
+    postId: v.id("posts"),
+    slug: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    // Implementation
+  },
+});
+```
+</example>
+</examples>
+</validator-guidelines>
+
+<typescript-guidelines>
+<rules>
+- Use `Id<"tableName">` type for document IDs
+- Be strict with types, especially around document IDs
+- Use proper Record types with correct key/value types
+- Import types from generated files
+- Use conditional types for optional fields
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+import { Id } from "./_generated/dataModel";
+
+type User = {
+  _id: Id<"users">;
+  name: string;
+  email: string;
+  posts: Id<"posts">[];
+};
+
+type UserPreferences = Record<Id<"users">, {
+  theme: "light" | "dark";
+  notifications: boolean;
+}>;
+
+export const getUserPosts = query({
+  args: { userId: v.id("users") },
+  returns: v.array(v.object({
+    _id: v.id("posts"),
+    title: v.string(),
+    authorId: v.id("users"),
+  })),
+  handler: async (ctx, args): Promise<Array<{
+    _id: Id<"posts">;
+    title: string;
+    authorId: Id<"users">;
+  }>> => {
+    return await ctx.db
+      .query("posts")
+      .withIndex("by_author", (q) => q.eq("authorId", args.userId))
+      .collect();
+  },
+});
+```
+</example>
+</examples>
+</typescript-guidelines>
+
+</convex-guidelines>

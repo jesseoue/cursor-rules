@@ -686,3 +686,273 @@ export class AnalyticsCache {
 8. **Implement proper authentication for sensitive data**
 9. **Use batch ingestion for high-volume events**
 10. **Set up alerts for failed data ingestion**
+
+<tinybird-best-practices>
+
+<title>Tinybird Real-Time Analytics Best Practices</title>
+
+<data-sources>
+<rules>
+- Design efficient data source schemas with proper types
+- Use appropriate ingestion methods for your data volume
+- Implement proper data validation and error handling
+- Use partitioning for large datasets
+- Configure appropriate retention policies
+- Monitor ingestion rates and data quality
+</rules>
+
+<examples>
+<example type="good">
+```sql
+-- events.datasource
+SCHEMA >
+    `timestamp` DateTime64(3),
+    `user_id` String,
+    `event` LowCardinality(String),
+    `properties` String,
+    `session_id` String,
+    `page_url` String,
+    `referrer` String,
+    `user_agent` String,
+    `ip_address` String,
+    `country` LowCardinality(String),
+    `city` String
+
+ENGINE "MergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(timestamp)"
+ENGINE_SORTING_KEY "timestamp, user_id, event"
+ENGINE_TTL "timestamp + toIntervalDay(90)"
+```
+
+```typescript
+// Tinybird ingestion client
+// lib/tinybird.ts
+import { z } from 'zod';
+
+const envSchema = z.object({
+  TINYBIRD_API_URL: z.string().url(),
+  TINYBIRD_TOKEN: z.string(),
+});
+
+const env = envSchema.parse(process.env);
+
+export class TinybirdClient {
+  private apiUrl: string;
+  private token: string;
+  
+  constructor() {
+    this.apiUrl = env.TINYBIRD_API_URL;
+    this.token = env.TINYBIRD_TOKEN;
+  }
+  
+  async ingestEvents(events: Array<{
+    timestamp: string;
+    user_id: string;
+    event: string;
+    properties: object;
+    session_id: string;
+    page_url: string;
+    referrer?: string;
+    user_agent: string;
+    ip_address: string;
+    country: string;
+    city: string;
+  }>) {
+    const ndjson = events
+      .map(event => JSON.stringify({
+        ...event,
+        properties: JSON.stringify(event.properties),
+        timestamp: new Date(event.timestamp).toISOString(),
+      }))
+      .join('\n');
+    
+    const response = await fetch(`${this.apiUrl}/v0/events?name=events`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/x-ndjson',
+      },
+      body: ndjson,
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Ingestion failed: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  }
+  
+  async queryAPI(endpoint: string, params?: Record<string, string>) {
+    const url = new URL(`${this.apiUrl}/v0/pipes/${endpoint}`);
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        url.searchParams.set(key, value);
+      });
+    }
+    
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API query failed: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  }
+}
+
+export const tinybird = new TinybirdClient();
+```
+</example>
+</examples>
+</data-sources>
+
+<pipes-and-apis>
+<rules>
+- Write efficient SQL queries with proper filtering
+- Use materialized views for complex aggregations
+- Implement proper parameterization for APIs
+- Cache results when appropriate
+- Monitor query performance and optimize
+- Use proper data types for better performance
+</rules>
+
+<examples>
+<example type="good">
+```sql
+-- user_activity_daily.pipe
+NODE daily_user_activity
+SQL >
+    SELECT 
+        toDate(timestamp) as date,
+        user_id,
+        count() as events_count,
+        countIf(event = 'page_view') as page_views,
+        countIf(event = 'click') as clicks,
+        countIf(event = 'conversion') as conversions,
+        uniq(session_id) as sessions,
+        max(timestamp) as last_activity
+    FROM events
+    WHERE timestamp >= now() - INTERVAL 30 DAY
+    GROUP BY date, user_id
+    ORDER BY date DESC, events_count DESC
+
+TYPE materialized
+DATASOURCE user_activity_daily_mv
+
+-- real_time_metrics.pipe  
+NODE endpoint
+SQL >
+    SELECT 
+        toStartOfHour(timestamp) as hour,
+        event,
+        count() as event_count,
+        uniq(user_id) as unique_users,
+        uniq(session_id) as unique_sessions
+    FROM events 
+    WHERE timestamp >= {{DateTime(start_time, '2024-01-01 00:00:00')}}
+      AND timestamp <= {{DateTime(end_time, now())}}
+      {% if defined(event_filter) %}
+      AND event = {{String(event_filter)}}
+      {% end %}
+    GROUP BY hour, event
+    ORDER BY hour DESC, event_count DESC
+    LIMIT {{Int32(limit, 100)}}
+```
+
+```typescript
+// API integration examples
+// lib/analytics.ts
+import { tinybird } from './tinybird';
+
+export class AnalyticsService {
+  async getRealTimeMetrics(options: {
+    startTime?: Date;
+    endTime?: Date;
+    eventFilter?: string;
+    limit?: number;
+  } = {}) {
+    const params: Record<string, string> = {};
+    
+    if (options.startTime) {
+      params.start_time = options.startTime.toISOString();
+    }
+    if (options.endTime) {
+      params.end_time = options.endTime.toISOString();
+    }
+    if (options.eventFilter) {
+      params.event_filter = options.eventFilter;
+    }
+    if (options.limit) {
+      params.limit = options.limit.toString();
+    }
+    
+    return await tinybird.queryAPI('real_time_metrics', params);
+  }
+  
+  async getUserActivity(userId: string, days: number = 30) {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    
+    return await tinybird.queryAPI('user_activity_daily', {
+      user_id: userId,
+      start_date: startDate.toISOString().split('T')[0],
+    });
+  }
+  
+  async getTopEvents(limit: number = 10) {
+    return await tinybird.queryAPI('top_events', {
+      limit: limit.toString(),
+    });
+  }
+}
+
+export const analytics = new AnalyticsService();
+```
+</example>
+</examples>
+</pipes-and-apis>
+
+<best-practices>
+<data-modeling>
+- Use appropriate ClickHouse data types for performance
+- Implement proper partitioning strategies
+- Use LowCardinality for categorical data
+- Design efficient sorting keys
+- Consider data retention and TTL policies
+- Use materialized views for complex aggregations
+</data-modeling>
+
+<performance>
+- Batch data ingestion for better throughput
+- Use compression for large payloads
+- Monitor query performance and optimize
+- Cache frequently accessed results
+- Use proper indexing strategies
+- Profile slow queries and optimize
+</performance>
+
+<monitoring>
+- Monitor ingestion rates and lag
+- Track query performance metrics
+- Set up alerts for data quality issues
+- Monitor API endpoint performance
+- Track data retention and storage usage
+- Implement comprehensive error logging
+</monitoring>
+
+<security>
+- Use proper authentication tokens
+- Implement rate limiting for APIs
+- Validate all input data
+- Use HTTPS for all connections
+- Implement proper access controls
+- Regular security audits and updates
+</security>
+</best-practices>
+
+</tinybird-best-practices>

@@ -3,9 +3,17 @@ description:
 globs:
 alwaysApply: false
 ---
-# Inngest Development Rules
+---
+description: Inngest workflow automation best practices including function definitions, event patterns, and client configuration
+globs: []
+alwaysApply: false
+---
 
-## Core Setup
+<inngest-guidelines>
+
+<title>Inngest Workflow Automation Best Practices</title>
+
+<core-setup>
 
 ### Installation & Configuration
 ```typescript
@@ -610,3 +618,349 @@ export function PaymentForm() {
 8. **Event Naming**: Use consistent, descriptive event names
 9. **Data Validation**: Validate event data before processing
 10. **Retries**: Configure appropriate retry strategies for different error types
+
+<inngest-best-practices>
+
+<title>Inngest Workflow Automation Best Practices</title>
+
+<function-definition>
+<rules>
+- Use TypeScript for type-safe function definitions
+- Define clear event schemas with proper validation
+- Use descriptive function names and IDs
+- Implement proper error handling and retries
+- Use step functions for complex workflows
+- Configure appropriate timeouts and concurrency
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// inngest/functions/user-onboarding.ts
+import { inngest } from "@/inngest/client";
+import { z } from "zod";
+
+// Event schema validation
+const UserSignedUpSchema = z.object({
+  userId: z.string(),
+  email: z.string().email(),
+  name: z.string(),
+  plan: z.enum(['free', 'pro', 'enterprise']),
+});
+
+export const userOnboarding = inngest.createFunction(
+  {
+    id: "user-onboarding",
+    name: "User Onboarding Flow",
+    concurrency: {
+      limit: 10,
+    },
+    retries: {
+      attempts: 3,
+    },
+  },
+  { event: "user/signed-up" },
+  async ({ event, step }) => {
+    // Validate event data
+    const userData = UserSignedUpSchema.parse(event.data);
+    
+    // Step 1: Send welcome email
+    const emailResult = await step.run("send-welcome-email", async () => {
+      return await sendWelcomeEmail(userData.email, userData.name);
+    });
+    
+    // Step 2: Create user profile with retry
+    const profile = await step.run("create-user-profile", async () => {
+      return await createUserProfile(userData);
+    });
+    
+    // Step 3: Setup based on plan (conditional)
+    if (userData.plan !== 'free') {
+      await step.run("setup-premium-features", async () => {
+        return await setupPremiumFeatures(userData.userId, userData.plan);
+      });
+    }
+    
+    // Step 4: Schedule follow-up (delayed)
+    await step.sleep("wait-for-follow-up", "3d");
+    
+    const followUpResult = await step.run("send-follow-up", async () => {
+      return await sendFollowUpEmail(userData.email);
+    });
+    
+    return {
+      success: true,
+      userId: userData.userId,
+      emailSent: emailResult.success,
+      profileCreated: !!profile,
+      followUpSent: followUpResult.success,
+    };
+  }
+);
+
+// Background job with scheduling
+export const dailyReports = inngest.createFunction(
+  {
+    id: "daily-reports",
+    name: "Generate Daily Reports",
+  },
+  { cron: "0 9 * * *" }, // Daily at 9 AM
+  async ({ step }) => {
+    // Generate user activity report
+    const userReport = await step.run("generate-user-report", async () => {
+      return await generateUserActivityReport();
+    });
+    
+    // Generate revenue report
+    const revenueReport = await step.run("generate-revenue-report", async () => {
+      return await generateRevenueReport();
+    });
+    
+    // Send to stakeholders
+    await step.run("send-reports", async () => {
+      return await sendReportsToStakeholders([userReport, revenueReport]);
+    });
+    
+    return { reportsGenerated: true };
+  }
+);
+```
+</example>
+</examples>
+</function-definition>
+
+<event-patterns>
+<rules>
+- Use consistent event naming conventions
+- Include proper event versioning
+- Add relevant metadata to events
+- Use event batching for high-volume scenarios
+- Implement event replay capabilities
+- Use proper event routing and filtering
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Event definitions and schemas
+// lib/events.ts
+import { z } from "zod";
+
+export const EventSchemas = {
+  "user/signed-up": z.object({
+    userId: z.string(),
+    email: z.string().email(),
+    name: z.string(),
+    plan: z.enum(['free', 'pro', 'enterprise']),
+    source: z.string(),
+    timestamp: z.string(),
+  }),
+  
+  "order/created": z.object({
+    orderId: z.string(),
+    userId: z.string(),
+    amount: z.number(),
+    currency: z.string(),
+    items: z.array(z.object({
+      productId: z.string(),
+      quantity: z.number(),
+      price: z.number(),
+    })),
+  }),
+  
+  "payment/completed": z.object({
+    paymentId: z.string(),
+    orderId: z.string(),
+    amount: z.number(),
+    currency: z.string(),
+    method: z.string(),
+  }),
+};
+
+// Event emission helpers
+export class EventEmitter {
+  static async emitUserSignedUp(userData: {
+    userId: string;
+    email: string;
+    name: string;
+    plan: 'free' | 'pro' | 'enterprise';
+    source: string;
+  }) {
+    await inngest.send({
+      name: "user/signed-up",
+      data: {
+        ...userData,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+  
+  static async emitOrderCreated(orderData: {
+    orderId: string;
+    userId: string;
+    amount: number;
+    currency: string;
+    items: Array<{
+      productId: string;
+      quantity: number;
+      price: number;
+    }>;
+  }) {
+    await inngest.send({
+      name: "order/created",
+      data: orderData,
+    });
+  }
+  
+  // Batch event emission
+  static async emitBatch(events: Array<{
+    name: string;
+    data: any;
+  }>) {
+    await inngest.send(events);
+  }
+}
+```
+</example>
+</examples>
+</event-patterns>
+
+<client-configuration>
+<rules>
+- Configure proper client settings for your environment
+- Use environment variables for API keys and URLs
+- Implement proper middleware for logging and monitoring
+- Set up proper error handling and retry policies
+- Configure webhooks for production deployment
+- Use proper signing key validation
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// inngest/client.ts
+import { Inngest } from "inngest";
+import { z } from "zod";
+
+const envSchema = z.object({
+  INNGEST_EVENT_KEY: z.string(),
+  INNGEST_SIGNING_KEY: z.string(),
+  INNGEST_ENV: z.string().optional(),
+  NODE_ENV: z.enum(['development', 'staging', 'production']),
+});
+
+const env = envSchema.parse(process.env);
+
+export const inngest = new Inngest({
+  id: "my-app",
+  name: "My Application",
+  eventKey: env.INNGEST_EVENT_KEY,
+  isDev: env.NODE_ENV === 'development',
+  env: env.INNGEST_ENV,
+  middleware: [
+    // Logging middleware
+    {
+      name: "logger",
+      init: ({ client }) => {
+        return {
+          onFunctionRun: ({ ctx, fn }) => {
+            console.log(`Starting function: ${fn.name}`, {
+              runId: ctx.runId,
+              event: ctx.event,
+            });
+          },
+          onStepRun: ({ ctx, step }) => {
+            console.log(`Executing step: ${step.displayName}`, {
+              runId: ctx.runId,
+              stepId: step.id,
+            });
+          },
+          transformOutput: ({ result }) => {
+            console.log("Function completed", { result });
+            return result;
+          },
+        };
+      },
+    },
+    // Error tracking middleware
+    {
+      name: "error-tracker",
+      init: () => {
+        return {
+          transformOutput: ({ result, step }) => {
+            if (result.error) {
+              console.error("Step failed", {
+                stepId: step?.id,
+                error: result.error,
+              });
+              // Send to error tracking service
+            }
+            return result;
+          },
+        };
+      },
+    },
+  ],
+});
+
+// API route for webhooks
+// pages/api/inngest.ts (Next.js) or equivalent
+import { serve } from "inngest/next";
+import { inngest } from "@/inngest/client";
+import { userOnboarding, dailyReports, orderProcessing } from "@/inngest/functions";
+
+export default serve({
+  client: inngest,
+  functions: [
+    userOnboarding,
+    dailyReports,
+    orderProcessing,
+    // Add all your functions here
+  ],
+  signingKey: process.env.INNGEST_SIGNING_KEY!,
+  landingPage: false, // Disable in production
+});
+```
+</example>
+</examples>
+</client-configuration>
+
+<best-practices>
+<function-design>
+- Keep functions focused on single responsibilities
+- Use descriptive names and proper documentation
+- Implement comprehensive error handling
+- Use step functions for complex workflows
+- Design for idempotency and retries
+- Monitor function performance and costs
+</function-design>
+
+<event-management>
+- Use consistent naming conventions
+- Include proper event versioning
+- Validate event schemas thoroughly
+- Implement event replay capabilities
+- Use batching for high-volume events
+- Monitor event processing metrics
+</event-management>
+
+<error-handling>
+- Implement proper retry strategies
+- Use step-level error handling
+- Set appropriate timeouts
+- Log errors with sufficient context
+- Implement dead letter queues
+- Monitor and alert on failures
+</error-handling>
+
+<performance>
+- Use parallel steps for independent operations
+- Implement proper caching strategies
+- Monitor function execution times
+- Optimize payload sizes
+- Use appropriate concurrency limits
+- Profile and optimize slow functions
+</performance>
+</best-practices>
+
+</inngest-best-practices>

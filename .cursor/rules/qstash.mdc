@@ -1,0 +1,790 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+description: QStash HTTP-based message queue best practices including client setup, message publishing, and webhook handling
+globs: []
+alwaysApply: false
+---
+
+<qstash-best-practices>
+
+<title>QStash HTTP-Based Message Queue Best Practices</title>
+
+<client-setup>
+<rules>
+- Use official QStash SDK for TypeScript/JavaScript applications
+- Configure proper authentication with QStash tokens
+- Implement proper error handling for client operations
+- Use environment variables for QStash configuration
+- Set up proper retry logic and timeout handling
+- Implement request signing for webhook verification
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// lib/qstash.ts
+import { Client } from '@upstash/qstash';
+
+const client = new Client({
+  token: process.env.QSTASH_TOKEN!,
+});
+
+export { client as qstash };
+
+// Environment configuration
+// .env.local
+QSTASH_TOKEN=your_qstash_token
+QSTASH_CURRENT_SIGNING_KEY=your_current_signing_key
+QSTASH_NEXT_SIGNING_KEY=your_next_signing_key
+
+// Type-safe client wrapper
+export class QStashService {
+  private client: Client;
+  
+  constructor() {
+    if (!process.env.QSTASH_TOKEN) {
+      throw new Error('QSTASH_TOKEN environment variable is required');
+    }
+    
+    this.client = new Client({
+      token: process.env.QSTASH_TOKEN,
+    });
+  }
+  
+  async publishMessage<T = any>(
+    destination: string,
+    payload: T,
+    options?: {
+      delay?: number;
+      retries?: number;
+      headers?: Record<string, string>;
+    }
+  ) {
+    try {
+      const response = await this.client.publishJSON({
+        url: destination,
+        body: payload,
+        delay: options?.delay,
+        retries: options?.retries,
+        headers: options?.headers,
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('QStash publish error:', error);
+      throw error;
+    }
+  }
+}
+
+export const qstashService = new QStashService();
+```
+</example>
+</examples>
+</client-setup>
+
+<message-publishing>
+<rules>
+- Use `publishJSON` for JSON payloads and proper content-type handling
+- Implement proper delay scheduling for future execution
+- Configure appropriate retry policies for reliability
+- Use custom headers for message metadata and routing
+- Implement proper payload validation before publishing
+- Use topic-based publishing for fan-out patterns
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// services/messageService.ts
+import { qstashService } from '@/lib/qstash';
+import { z } from 'zod';
+
+// Message schemas
+const EmailMessageSchema = z.object({
+  to: z.string().email(),
+  subject: z.string(),
+  body: z.string(),
+  template: z.string().optional(),
+});
+
+const OrderProcessingSchema = z.object({
+  orderId: z.string(),
+  userId: z.string(),
+  amount: z.number(),
+  items: z.array(z.object({
+    id: z.string(),
+    quantity: z.number(),
+  })),
+});
+
+export class MessageService {
+  // Send immediate message
+  async sendEmail(emailData: z.infer<typeof EmailMessageSchema>) {
+    const validated = EmailMessageSchema.parse(emailData);
+    
+    return await qstashService.publishMessage(
+      `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/send-email`,
+      validated,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Message-Type': 'email',
+        },
+      }
+    );
+  }
+  
+  // Delayed message with retries
+  async scheduleOrderProcessing(
+    orderData: z.infer<typeof OrderProcessingSchema>,
+    delayInSeconds: number = 0
+  ) {
+    const validated = OrderProcessingSchema.parse(orderData);
+    
+    return await qstashService.publishMessage(
+      `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/process-order`,
+      validated,
+      {
+        delay: delayInSeconds,
+        retries: 3,
+        headers: {
+          'X-Message-Type': 'order-processing',
+          'X-Order-Id': validated.orderId,
+        },
+      }
+    );
+  }
+  
+  // Batch publishing
+  async publishMultipleMessages<T>(
+    messages: Array<{
+      destination: string;
+      payload: T;
+      options?: any;
+    }>
+  ) {
+    const results = await Promise.allSettled(
+      messages.map(msg => 
+        qstashService.publishMessage(msg.destination, msg.payload, msg.options)
+      )
+    );
+    
+    return results;
+  }
+  
+  // Topic-based publishing for fan-out
+  async publishToTopic(topicName: string, payload: any) {
+    return await qstash.publishJSON({
+      topic: topicName,
+      body: payload,
+    });
+  }
+}
+
+export const messageService = new MessageService();
+```
+</example>
+</examples>
+</message-publishing>
+
+<webhook-handling>
+<rules>
+- Implement proper webhook signature verification
+- Use proper error handling and response codes
+- Implement idempotency for webhook processing
+- Log webhook events for debugging and monitoring
+- Use proper timeout handling for long-running operations
+- Implement dead letter queue patterns for failed messages
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// lib/webhook-verification.ts
+import { Receiver } from '@upstash/qstash';
+
+const receiver = new Receiver({
+  currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY!,
+  nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY!,
+});
+
+export async function verifyQStashSignature(
+  signature: string,
+  body: string
+): Promise<boolean> {
+  try {
+    await receiver.verify({
+      signature,
+      body,
+    });
+    return true;
+  } catch (error) {
+    console.error('QStash signature verification failed:', error);
+    return false;
+  }
+}
+
+// API webhook handler
+// pages/api/webhooks/send-email.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import { verifyQStashSignature } from '@/lib/webhook-verification';
+import { z } from 'zod';
+
+const EmailWebhookSchema = z.object({
+  to: z.string().email(),
+  subject: z.string(),
+  body: z.string(),
+  template: z.string().optional(),
+});
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  
+  try {
+    // Verify QStash signature
+    const signature = req.headers['upstash-signature'] as string;
+    const body = JSON.stringify(req.body);
+    
+    if (!signature || !await verifyQStashSignature(signature, body)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    // Validate payload
+    const emailData = EmailWebhookSchema.parse(req.body);
+    
+    // Idempotency check using message ID
+    const messageId = req.headers['upstash-message-id'] as string;
+    if (await isMessageProcessed(messageId)) {
+      return res.status(200).json({ 
+        status: 'already_processed',
+        messageId 
+      });
+    }
+    
+    // Process email sending
+    await sendEmailService(emailData);
+    
+    // Mark as processed
+    await markMessageProcessed(messageId);
+    
+    return res.status(200).json({ 
+      status: 'success',
+      messageId 
+    });
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ 
+        error: 'Invalid payload',
+        details: error.errors 
+      });
+    }
+    
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      shouldRetry: true 
+    });
+  }
+}
+
+// Idempotency helpers
+async function isMessageProcessed(messageId: string): Promise<boolean> {
+  // Check Redis or database for processed message
+  // Return true if already processed
+  return false;
+}
+
+async function markMessageProcessed(messageId: string): Promise<void> {
+  // Store message ID to prevent duplicate processing
+  // Use Redis with TTL or database record
+}
+```
+</example>
+</examples>
+</webhook-handling>
+
+<scheduling-patterns>
+<rules>
+- Use cron-like scheduling for recurring tasks
+- Implement proper delay calculations for future scheduling
+- Use rate limiting to prevent overwhelming downstream services
+- Implement proper backoff strategies for failed messages
+- Use DLQ (Dead Letter Queue) patterns for unprocessable messages
+- Monitor queue depth and processing times
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// services/schedulingService.ts
+import { qstash } from '@/lib/qstash';
+
+export class SchedulingService {
+  // Schedule recurring task (cron-like)
+  async scheduleRecurringTask(
+    taskName: string,
+    cronExpression: string,
+    endpoint: string,
+    payload: any
+  ) {
+    return await qstash.publishJSON({
+      url: endpoint,
+      body: payload,
+      cron: cronExpression,
+      headers: {
+        'X-Task-Name': taskName,
+        'X-Scheduled-At': new Date().toISOString(),
+      },
+    });
+  }
+  
+  // Schedule one-time delayed task
+  async scheduleDelayedTask(
+    endpoint: string,
+    payload: any,
+    delayInSeconds: number
+  ) {
+    return await qstash.publishJSON({
+      url: endpoint,
+      body: payload,
+      delay: delayInSeconds,
+      retries: 3,
+    });
+  }
+  
+  // Batch job scheduling with rate limiting
+  async scheduleBatchJobs(
+    jobs: Array<{ endpoint: string; payload: any; delay?: number }>,
+    rateLimit: number = 10 // messages per second
+  ) {
+    const batches = this.chunkArray(jobs, rateLimit);
+    const results = [];
+    
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      const batchPromises = batch.map(job =>
+        qstash.publishJSON({
+          url: job.endpoint,
+          body: job.payload,
+          delay: job.delay || 0,
+        })
+      );
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+      results.push(...batchResults);
+      
+      // Rate limiting delay between batches
+      if (i < batches.length - 1) {
+        await this.sleep(1000);
+      }
+    }
+    
+    return results;
+  }
+  
+  // Exponential backoff retry pattern
+  async scheduleWithBackoff(
+    endpoint: string,
+    payload: any,
+    attempt: number = 1,
+    maxAttempts: number = 5
+  ) {
+    const delay = Math.min(Math.pow(2, attempt) * 1000, 30000); // Cap at 30s
+    
+    return await qstash.publishJSON({
+      url: endpoint,
+      body: {
+        ...payload,
+        attempt,
+        maxAttempts,
+      },
+      delay: delay / 1000, // QStash expects seconds
+      headers: {
+        'X-Retry-Attempt': attempt.toString(),
+        'X-Max-Attempts': maxAttempts.toString(),
+      },
+    });
+  }
+  
+  private chunkArray<T>(array: T[], size: number): T[][] {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += size) {
+      chunks.push(array.slice(i, i + size));
+    }
+    return chunks;
+  }
+  
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+export const schedulingService = new SchedulingService();
+
+// Usage examples
+// Schedule daily cleanup at 2 AM
+await schedulingService.scheduleRecurringTask(
+  'daily-cleanup',
+  '0 2 * * *',
+  '/api/tasks/cleanup',
+  { type: 'daily_cleanup' }
+);
+
+// Schedule order processing with 5 minute delay
+await schedulingService.scheduleDelayedTask(
+  '/api/webhooks/process-order',
+  { orderId: '12345' },
+  300 // 5 minutes
+);
+```
+</example>
+</examples>
+</scheduling-patterns>
+
+<error-handling>
+<rules>
+- Implement proper retry logic with exponential backoff
+- Use dead letter queues for unprocessable messages
+- Log all errors with proper context and tracing
+- Implement circuit breaker patterns for downstream services
+- Use proper status codes for webhook responses
+- Monitor failure rates and alert on anomalies
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// lib/error-handling.ts
+import { qstash } from '@/lib/qstash';
+
+export class QStashErrorHandler {
+  // Retry with exponential backoff
+  static async retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3,
+    baseDelay: number = 1000
+  ): Promise<T> {
+    let lastError: Error;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        
+        if (attempt === maxRetries) {
+          throw lastError;
+        }
+        
+        const delay = baseDelay * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError!;
+  }
+  
+  // Dead letter queue handler
+  static async sendToDeadLetterQueue(
+    originalPayload: any,
+    error: Error,
+    metadata: {
+      originalEndpoint: string;
+      attempts: number;
+      lastAttemptTime: string;
+    }
+  ) {
+    const dlqPayload = {
+      originalPayload,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+      metadata,
+      timestamp: new Date().toISOString(),
+    };
+    
+    return await qstash.publishJSON({
+      url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/dlq/failed-messages`,
+      body: dlqPayload,
+      headers: {
+        'X-DLQ-Message': 'true',
+        'X-Original-Endpoint': metadata.originalEndpoint,
+      },
+    });
+  }
+}
+
+// Circuit breaker implementation
+export class CircuitBreaker {
+  private failures = 0;
+  private lastFailureTime = 0;
+  private state: 'CLOSED' | 'OPEN' | 'HALF_OPEN' = 'CLOSED';
+  
+  constructor(
+    private threshold: number = 5,
+    private timeout: number = 60000 // 1 minute
+  ) {}
+  
+  async execute<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.state === 'OPEN') {
+      if (Date.now() - this.lastFailureTime > this.timeout) {
+        this.state = 'HALF_OPEN';
+      } else {
+        throw new Error('Circuit breaker is OPEN');
+      }
+    }
+    
+    try {
+      const result = await operation();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      throw error;
+    }
+  }
+  
+  private onSuccess() {
+    this.failures = 0;
+    this.state = 'CLOSED';
+  }
+  
+  private onFailure() {
+    this.failures++;
+    this.lastFailureTime = Date.now();
+    
+    if (this.failures >= this.threshold) {
+      this.state = 'OPEN';
+    }
+  }
+}
+
+// Usage in webhook handler
+// pages/api/webhooks/process-payment.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import { QStashErrorHandler, CircuitBreaker } from '@/lib/error-handling';
+
+const paymentServiceBreaker = new CircuitBreaker(3, 30000);
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  try {
+    const { orderId, amount } = req.body;
+    
+    // Process payment with circuit breaker
+    const result = await paymentServiceBreaker.execute(async () => {
+      return await processPayment(orderId, amount);
+    });
+    
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Payment processing failed:', error);
+    
+    // Send to DLQ after max retries
+    const attempt = parseInt(req.headers['x-retry-attempt'] as string) || 1;
+    const maxAttempts = parseInt(req.headers['x-max-attempts'] as string) || 3;
+    
+    if (attempt >= maxAttempts) {
+      await QStashErrorHandler.sendToDeadLetterQueue(
+        req.body,
+        error as Error,
+        {
+          originalEndpoint: req.url!,
+          attempts: attempt,
+          lastAttemptTime: new Date().toISOString(),
+        }
+      );
+      
+      return res.status(200).json({ 
+        status: 'failed',
+        sentToDLQ: true 
+      });
+    }
+    
+    // Return 500 for QStash to retry
+    return res.status(500).json({ 
+      error: 'Processing failed',
+      shouldRetry: true,
+      attempt 
+    });
+  }
+}
+```
+</example>
+</examples>
+</error-handling>
+
+<monitoring-observability>
+<rules>
+- Implement comprehensive logging for all QStash operations
+- Use structured logging with correlation IDs
+- Monitor message processing times and failure rates
+- Set up alerts for queue depth and processing delays
+- Track retry patterns and DLQ accumulation
+- Implement health checks for webhook endpoints
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// lib/monitoring.ts
+import { randomUUID } from 'crypto';
+
+export class QStashMonitoring {
+  static logMessageSent(messageId: string, destination: string, payload: any) {
+    console.log(JSON.stringify({
+      event: 'qstash_message_sent',
+      messageId,
+      destination,
+      payloadSize: JSON.stringify(payload).length,
+      timestamp: new Date().toISOString(),
+    }));
+  }
+  
+  static logMessageReceived(messageId: string, endpoint: string) {
+    console.log(JSON.stringify({
+      event: 'qstash_message_received',
+      messageId,
+      endpoint,
+      timestamp: new Date().toISOString(),
+    }));
+  }
+  
+  static logProcessingTime(messageId: string, processingTimeMs: number) {
+    console.log(JSON.stringify({
+      event: 'qstash_processing_completed',
+      messageId,
+      processingTimeMs,
+      timestamp: new Date().toISOString(),
+    }));
+  }
+  
+  static logError(messageId: string, error: Error, context: any) {
+    console.error(JSON.stringify({
+      event: 'qstash_error',
+      messageId,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+      context,
+      timestamp: new Date().toISOString(),
+    }));
+  }
+}
+
+// Monitoring middleware
+export function withQStashMonitoring(handler: Function) {
+  return async (req: NextApiRequest, res: NextApiResponse) => {
+    const messageId = req.headers['upstash-message-id'] as string || randomUUID();
+    const startTime = Date.now();
+    
+    // Add correlation ID to logs
+    req.qstashMessageId = messageId;
+    
+    QStashMonitoring.logMessageReceived(messageId, req.url!);
+    
+    try {
+      const result = await handler(req, res);
+      
+      const processingTime = Date.now() - startTime;
+      QStashMonitoring.logProcessingTime(messageId, processingTime);
+      
+      return result;
+    } catch (error) {
+      QStashMonitoring.logError(messageId, error as Error, {
+        endpoint: req.url,
+        method: req.method,
+        headers: req.headers,
+      });
+      throw error;
+    }
+  };
+}
+
+// Health check endpoint
+// pages/api/health/qstash.ts
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  try {
+    // Test QStash connectivity
+    await qstash.publishJSON({
+      url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/health/ping`,
+      body: { health_check: true },
+    });
+    
+    return res.status(200).json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      qstash: 'connected',
+    });
+  } catch (error) {
+    return res.status(503).json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+}
+```
+</example>
+</examples>
+</monitoring-observability>
+
+<best-practices>
+<message-design>
+- Keep message payloads small and focused
+- Use proper JSON schema validation
+- Include version information in messages
+- Design for idempotency from the start
+- Use correlation IDs for tracing
+- Implement proper message expiration
+</message-design>
+
+<security>
+- Always verify webhook signatures
+- Use HTTPS for all webhook endpoints
+- Implement proper authentication for sensitive operations
+- Store QStash tokens securely as environment variables
+- Use rate limiting to prevent abuse
+- Implement proper access controls
+</security>
+
+<reliability>
+- Design for at-least-once delivery semantics
+- Implement proper retry logic with backoff
+- Use dead letter queues for failed messages
+- Monitor and alert on processing failures
+- Implement circuit breakers for downstream services
+- Test failure scenarios thoroughly
+</reliability>
+
+<performance>
+- Use appropriate delays to avoid overwhelming services
+- Implement proper batch processing patterns
+- Monitor queue depth and processing times
+- Use appropriate timeout values
+- Optimize payload sizes
+- Consider using topics for fan-out patterns
+</performance>
+</best-practices>
+
+</qstash-best-practices>

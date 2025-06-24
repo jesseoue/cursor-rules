@@ -1,0 +1,605 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+description: Vercel platform development and deployment best practices including Edge Functions, serverless functions, and performance optimization
+globs: []
+alwaysApply: false
+---
+
+<vercel-best-practices>
+
+<title>Vercel Platform Development and Deployment Best Practices</title>
+
+<project-configuration>
+<rules>
+- Use `vercel.json` for advanced deployment configuration
+- Configure environment variables properly for different environments
+- Use proper build and output configuration
+- Implement proper caching strategies
+- Configure custom domains and redirects appropriately
+- Use proper security headers and CSP configuration
+</rules>
+
+<examples>
+<example type="good">
+```json
+// vercel.json
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "env": {
+    "CUSTOM_KEY": "custom-value"
+  },
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_ANALYTICS_ID": "@analytics-id"
+    }
+  },
+  "functions": {
+    "pages/api/**/*.ts": {
+      "maxDuration": 30
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/cleanup",
+      "schedule": "0 2 * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/old-path",
+      "destination": "/new-path",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/proxy/(.*)",
+      "destination": "https://external-api.com/$1"
+    }
+  ]
+}
+```
+</example>
+</examples>
+</project-configuration>
+
+<edge-functions>
+<rules>
+- Use Edge Runtime for low-latency, global distribution
+- Keep Edge Functions lightweight and fast
+- Use proper caching strategies for Edge Functions
+- Handle geo-location and user preferences at the edge
+- Implement proper error handling and fallbacks
+- Use Edge-compatible APIs and libraries only
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// pages/api/edge-example.ts or app/api/edge-example/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+
+export const runtime = 'edge';
+
+export default async function handler(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const country = request.geo?.country || 'Unknown';
+  const city = request.geo?.city || 'Unknown';
+  
+  // Geo-based logic
+  const response = {
+    message: `Hello from ${city}, ${country}!`,
+    timestamp: new Date().toISOString(),
+    userAgent: request.headers.get('user-agent'),
+  };
+  
+  return NextResponse.json(response, {
+    headers: {
+      'Cache-Control': 's-maxage=60, stale-while-revalidate=300',
+    },
+  });
+}
+
+// Middleware for Edge Runtime
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  // A/B testing at the edge
+  const bucket = Math.random() < 0.5 ? 'a' : 'b';
+  const response = NextResponse.next();
+  
+  response.cookies.set('bucket', bucket);
+  response.headers.set('x-bucket', bucket);
+  
+  // Geo-based redirects
+  if (request.geo?.country === 'DE' && !request.nextUrl.pathname.startsWith('/de')) {
+    return NextResponse.redirect(new URL('/de' + request.nextUrl.pathname, request.url));
+  }
+  
+  return response;
+}
+
+export const config = {
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
+};
+```
+</example>
+</examples>
+</edge-functions>
+
+<serverless-functions>
+<rules>
+- Configure function regions appropriately
+- Set proper timeout and memory limits
+- Use environment variables for configuration
+- Implement proper error handling and logging
+- Optimize cold start performance
+- Use connection pooling for databases
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// pages/api/users/[id].ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import { z } from 'zod';
+
+const getUserSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const updateUserSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+});
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  try {
+    if (req.method === 'GET') {
+      const { id } = getUserSchema.parse(req.query);
+      
+      const user = await getUserById(id);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      return res.status(200).json(user);
+    }
+    
+    if (req.method === 'PUT') {
+      const { id } = getUserSchema.parse(req.query);
+      const userData = updateUserSchema.parse(req.body);
+      
+      const updatedUser = await updateUser(id, userData);
+      return res.status(200).json(updatedUser);
+    }
+    
+    res.setHeader('Allow', ['GET', 'PUT']);
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (error) {
+    console.error('API Error:', error);
+    
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        details: error.errors 
+      });
+    }
+    
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// App Router API route
+// app/api/users/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { id } = z.object({ id: z.string().uuid() }).parse(params);
+    
+    const user = await getUserById(id);
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    
+    return NextResponse.json(user);
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Invalid user ID' }, 
+      { status: 400 }
+    );
+  }
+}
+```
+</example>
+</examples>
+</serverless-functions>
+
+<performance-optimization>
+<rules>
+- Use Vercel Analytics for performance monitoring
+- Implement proper caching headers
+- Use ISR (Incremental Static Regeneration) appropriately
+- Optimize images with Vercel Image Optimization
+- Configure proper build optimization
+- Use Vercel Speed Insights for Core Web Vitals
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // Vercel Analytics
+  experimental: {
+    instrumentationHook: true,
+  },
+  
+  // Image optimization
+  images: {
+    domains: ['example.com'],
+    formats: ['image/webp', 'image/avif'],
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+  },
+  
+  // Headers for performance
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-DNS-Prefetch-Control',
+            value: 'on'
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains; preload'
+          }
+        ],
+      },
+    ];
+  },
+  
+  // Redirects
+  async redirects() {
+    return [
+      {
+        source: '/old-blog/:path*',
+        destination: '/blog/:path*',
+        permanent: true,
+      },
+    ];
+  },
+  
+  // Rewrites for API proxying
+  async rewrites() {
+    return [
+      {
+        source: '/api/external/:path*',
+        destination: 'https://api.external.com/:path*',
+      },
+    ];
+  },
+};
+
+module.exports = nextConfig;
+
+// ISR with Vercel
+export async function getStaticProps() {
+  const data = await fetchData();
+  
+  return {
+    props: { data },
+    revalidate: 60, // Revalidate every 60 seconds
+  };
+}
+
+// Speed Insights integration
+// app/layout.tsx
+import { SpeedInsights } from '@vercel/speed-insights/next';
+import { Analytics } from '@vercel/analytics/react';
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        {children}
+        <SpeedInsights />
+        <Analytics />
+      </body>
+    </html>
+  );
+}
+```
+</example>
+</examples>
+</performance-optimization>
+
+<environment-management>
+<rules>
+- Use Vercel Environment Variables for configuration
+- Separate development, preview, and production environments
+- Use encrypted environment variables for secrets
+- Implement proper environment variable validation
+- Use Vercel CLI for local development
+</rules>
+
+<examples>
+<example type="good">
+```bash
+# .env.local (for local development)
+DATABASE_URL="postgresql://localhost:5432/myapp"
+NEXTAUTH_SECRET="local-development-secret"
+NEXTAUTH_URL="http://localhost:3000"
+
+# Environment variable configuration
+# Use Vercel dashboard or CLI for production variables
+
+# Vercel CLI commands
+vercel env add PRODUCTION_API_KEY production
+vercel env add STAGING_API_KEY preview
+vercel env add DEVELOPMENT_API_KEY development
+
+# Pull environment variables
+vercel env pull .env.local
+```
+
+```typescript
+// lib/env.ts - Environment validation
+import { z } from 'zod';
+
+const envSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  NEXTAUTH_SECRET: z.string().min(32),
+  NEXTAUTH_URL: z.string().url(),
+  VERCEL_ENV: z.enum(['development', 'preview', 'production']).optional(),
+  VERCEL_URL: z.string().optional(),
+});
+
+export const env = envSchema.parse(process.env);
+
+// Dynamic configuration based on environment
+export const config = {
+  isDevelopment: env.VERCEL_ENV === 'development',
+  isPreview: env.VERCEL_ENV === 'preview',
+  isProduction: env.VERCEL_ENV === 'production',
+  baseUrl: env.VERCEL_ENV === 'production' 
+    ? 'https://myapp.com'
+    : env.VERCEL_URL 
+    ? `https://${env.VERCEL_URL}`
+    : 'http://localhost:3000',
+};
+```
+</example>
+</examples>
+</environment-management>
+
+<deployment-strategies>
+<rules>
+- Use Git integration for automatic deployments
+- Configure branch protection and preview deployments
+- Use Vercel CLI for deployment automation
+- Implement proper deployment checks and testing
+- Use deployment hooks for custom workflows
+- Configure proper domain management
+</rules>
+
+<examples>
+<example type="good">
+```json
+// .github/workflows/vercel.yml
+name: Vercel Production Deployment
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+on:
+  push:
+    branches:
+      - main
+jobs:
+  Deploy-Production:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Vercel CLI
+        run: npm install --global vercel@canary
+      - name: Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Build Project Artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy Project Artifacts to Vercel
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+# package.json scripts for Vercel
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "vercel:dev": "vercel dev",
+    "vercel:build": "vercel build",
+    "vercel:deploy": "vercel --prod",
+    "vercel:preview": "vercel"
+  }
+}
+```
+
+```typescript
+// Deployment hooks
+// pages/api/deploy-hook.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  // Verify webhook signature
+  const signature = req.headers['x-vercel-signature'];
+  
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  
+  try {
+    // Handle deployment events
+    const { type, payload } = req.body;
+    
+    switch (type) {
+      case 'deployment.created':
+        await handleDeploymentCreated(payload);
+        break;
+      case 'deployment.ready':
+        await handleDeploymentReady(payload);
+        break;
+      case 'deployment.error':
+        await handleDeploymentError(payload);
+        break;
+    }
+    
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    return res.status(500).json({ error: 'Webhook processing failed' });
+  }
+}
+```
+</example>
+</examples>
+</deployment-strategies>
+
+<monitoring-logging>
+<rules>
+- Use Vercel Analytics for user analytics
+- Implement Vercel Speed Insights for performance
+- Configure proper logging for serverless functions
+- Use Vercel Log Drains for external logging services
+- Implement error tracking and monitoring
+- Set up alerts for deployment and runtime issues
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// lib/analytics.ts
+import { track } from '@vercel/analytics';
+
+export const trackEvent = (eventName: string, properties?: Record<string, any>) => {
+  if (typeof window !== 'undefined') {
+    track(eventName, properties);
+  }
+};
+
+// Error logging
+// lib/logger.ts
+export const logger = {
+  info: (message: string, meta?: any) => {
+    console.log(`[INFO] ${message}`, meta);
+  },
+  error: (message: string, error?: Error, meta?: any) => {
+    console.error(`[ERROR] ${message}`, { error: error?.message, stack: error?.stack, ...meta });
+  },
+  warn: (message: string, meta?: any) => {
+    console.warn(`[WARN] ${message}`, meta);
+  },
+};
+
+// Instrumentation for monitoring
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { logger } = await import('./lib/logger');
+    
+    // Global error handling
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.error('Unhandled Rejection', reason as Error, { promise });
+    });
+    
+    process.on('uncaughtException', (error) => {
+      logger.error('Uncaught Exception', error);
+      process.exit(1);
+    });
+  }
+}
+```
+</example>
+</examples>
+</monitoring-logging>
+
+<best-practices>
+<security>
+- Use HTTPS everywhere with proper SSL configuration
+- Implement proper CSP headers
+- Use environment variables for secrets
+- Configure CORS properly for API routes
+- Implement rate limiting for API endpoints
+- Use proper authentication and authorization
+</security>
+
+<performance>
+- Use Edge Functions for global low-latency responses
+- Implement proper caching strategies
+- Optimize images with Vercel Image Optimization
+- Use ISR for dynamic content with static performance
+- Monitor Core Web Vitals with Speed Insights
+- Implement proper bundle optimization
+</performance>
+
+<development>
+- Use Vercel CLI for local development
+- Implement proper TypeScript configuration
+- Use preview deployments for testing
+- Configure proper Git integration
+- Implement automated testing in CI/CD
+- Use proper environment separation
+</development>
+</best-practices>
+
+</vercel-best-practices>

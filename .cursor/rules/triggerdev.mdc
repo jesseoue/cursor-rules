@@ -1,0 +1,670 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+description: Trigger.dev background jobs platform best practices including job definitions, client configuration, and workflow patterns
+globs: []
+alwaysApply: false
+---
+
+<triggerdev-best-practices>
+
+<title>Trigger.dev Background Jobs Best Practices</title>
+
+<job-definition>
+<rules>
+- Use TypeScript for type-safe job definitions
+- Define clear job IDs and descriptive names
+- Implement proper input validation with schemas
+- Use proper error handling and retry strategies
+- Configure appropriate timeouts and queue settings
+- Implement comprehensive logging and monitoring
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// jobs/user-onboarding.ts
+import { client } from "@/trigger";
+import { eventTrigger } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+const UserSignupEventSchema = z.object({
+  userId: z.string(),
+  email: z.string().email(),
+  name: z.string(),
+  plan: z.enum(['free', 'pro', 'enterprise']),
+});
+
+client.defineJob({
+  id: "user-onboarding",
+  name: "User Onboarding Workflow",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "user.signup",
+    schema: UserSignupEventSchema,
+  }),
+  integrations: {
+    // Define integrations if needed
+  },
+  run: async (payload, io, ctx) => {
+    const { userId, email, name, plan } = payload;
+    
+    // Step 1: Send welcome email with retry
+    const welcomeEmail = await io.runTask(
+      "send-welcome-email",
+      async () => {
+        return await sendWelcomeEmail(email, name);
+      },
+      {
+        retry: {
+          limit: 3,
+          factor: 2,
+          minTimeoutInMs: 1000,
+          maxTimeoutInMs: 10000,
+        },
+      }
+    );
+    
+    // Step 2: Create user profile
+    const userProfile = await io.runTask(
+      "create-user-profile",
+      async () => {
+        return await createUserProfile({
+          userId,
+          email,
+          name,
+          plan,
+        });
+      }
+    );
+    
+    // Step 3: Setup plan-specific features
+    if (plan !== 'free') {
+      await io.runTask(
+        "setup-premium-features",
+        async () => {
+          return await setupPremiumFeatures(userId, plan);
+        }
+      );
+    }
+    
+    // Step 4: Schedule follow-up email
+    await io.wait("wait-for-follow-up", 3 * 24 * 60 * 60); // 3 days
+    
+    const followUpEmail = await io.runTask(
+      "send-follow-up-email",
+      async () => {
+        return await sendFollowUpEmail(email, name);
+      }
+    );
+    
+    return {
+      success: true,
+      userId,
+      welcomeEmailSent: welcomeEmail.success,
+      profileCreated: !!userProfile,
+      followUpSent: followUpEmail.success,
+    };
+  },
+});
+
+// Scheduled job example
+client.defineJob({
+  id: "daily-analytics-report",
+  name: "Generate Daily Analytics Report",
+  version: "1.0.0",
+  trigger: intervalTrigger({
+    seconds: 24 * 60 * 60, // Daily
+  }),
+  run: async (payload, io, ctx) => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Generate user metrics
+    const userMetrics = await io.runTask(
+      "generate-user-metrics",
+      async () => {
+        return await generateUserMetrics(yesterday);
+      }
+    );
+    
+    // Generate revenue metrics
+    const revenueMetrics = await io.runTask(
+      "generate-revenue-metrics",
+      async () => {
+        return await generateRevenueMetrics(yesterday);
+      }
+    );
+    
+    // Create report
+    const report = await io.runTask(
+      "create-analytics-report",
+      async () => {
+        return await createAnalyticsReport({
+          date: yesterday,
+          userMetrics,
+          revenueMetrics,
+        });
+      }
+    );
+    
+    // Send to stakeholders
+    await io.runTask(
+      "send-report-to-stakeholders",
+      async () => {
+        return await sendReportToStakeholders(report);
+      }
+    );
+    
+    return {
+      success: true,
+      reportId: report.id,
+      date: yesterday.toISOString(),
+    };
+  },
+});
+```
+</example>
+</examples>
+</job-definition>
+
+<client-configuration>
+<rules>
+- Configure proper environment variables for API keys
+- Use appropriate client settings for your environment
+- Implement proper error handling and logging
+- Set up webhooks for job status updates
+- Configure development vs production settings
+- Use proper project and environment separation
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// trigger/client.ts
+import { TriggerClient } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+const envSchema = z.object({
+  TRIGGER_API_KEY: z.string(),
+  TRIGGER_API_URL: z.string().url().optional(),
+  NODE_ENV: z.enum(['development', 'staging', 'production']),
+});
+
+const env = envSchema.parse(process.env);
+
+export const client = new TriggerClient({
+  id: "my-app",
+  apiKey: env.TRIGGER_API_KEY,
+  apiUrl: env.TRIGGER_API_URL,
+  verbose: env.NODE_ENV === 'development',
+  ioLogLocalEnabled: env.NODE_ENV === 'development',
+});
+
+// Job status webhook handler
+// pages/api/trigger/webhook.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import { verifyRequestSignature } from "@trigger.dev/sdk";
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  
+  try {
+    // Verify webhook signature
+    const isValid = verifyRequestSignature({
+      body: JSON.stringify(req.body),
+      signature: req.headers['trigger-signature'] as string,
+      secret: process.env.TRIGGER_WEBHOOK_SECRET!,
+    });
+    
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+    
+    const { type, job, run } = req.body;
+    
+    // Handle different webhook events
+    switch (type) {
+      case 'JOB_RUN_COMPLETED':
+        await handleJobCompleted(job, run);
+        break;
+      case 'JOB_RUN_FAILED':
+        await handleJobFailed(job, run);
+        break;
+      case 'JOB_RUN_STARTED':
+        await handleJobStarted(job, run);
+        break;
+      default:
+        console.log(`Unknown webhook event: ${type}`);
+    }
+    
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    return res.status(500).json({ error: 'Processing failed' });
+  }
+}
+
+async function handleJobCompleted(job: any, run: any) {
+  console.log(`Job ${job.id} completed successfully:`, run.id);
+  // Add your logic here
+}
+
+async function handleJobFailed(job: any, run: any) {
+  console.error(`Job ${job.id} failed:`, run.id, run.error);
+  // Add error handling logic here
+}
+
+async function handleJobStarted(job: any, run: any) {
+  console.log(`Job ${job.id} started:`, run.id);
+  // Add tracking logic here
+}
+```
+</example>
+</examples>
+</client-configuration>
+
+<workflow-patterns>
+<rules>
+- Use io.runTask for idempotent operations
+- Implement proper task naming and organization
+- Use io.wait for delays and scheduling
+- Use io.sendEvent for triggering other jobs
+- Implement fan-out patterns for parallel processing
+- Use proper error boundaries and cleanup
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Complex workflow with parallel processing
+client.defineJob({
+  id: "order-fulfillment",
+  name: "Order Fulfillment Workflow",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "order.created",
+    schema: z.object({
+      orderId: z.string(),
+      userId: z.string(),
+      items: z.array(z.object({
+        productId: z.string(),
+        quantity: z.number(),
+      })),
+      total: z.number(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    const { orderId, userId, items, total } = payload;
+    
+    // Step 1: Validate order
+    const validation = await io.runTask(
+      "validate-order",
+      async () => {
+        return await validateOrder(orderId);
+      }
+    );
+    
+    if (!validation.valid) {
+      throw new Error(`Order validation failed: ${validation.reason}`);
+    }
+    
+    // Step 2: Process payment
+    const payment = await io.runTask(
+      "process-payment",
+      async () => {
+        return await processPayment(orderId, total);
+      },
+      {
+        retry: {
+          limit: 3,
+          factor: 1.5,
+        },
+      }
+    );
+    
+    // Step 3: Reserve inventory (parallel for each item)
+    const reservations = await Promise.all(
+      items.map((item, index) =>
+        io.runTask(
+          `reserve-inventory-${item.productId}`,
+          async () => {
+            return await reserveInventory(item.productId, item.quantity);
+          }
+        )
+      )
+    );
+    
+    // Step 4: Create shipment
+    const shipment = await io.runTask(
+      "create-shipment",
+      async () => {
+        return await createShipment(orderId, items);
+      }
+    );
+    
+    // Step 5: Send confirmation email
+    await io.runTask(
+      "send-order-confirmation",
+      async () => {
+        return await sendOrderConfirmation(userId, orderId);
+      }
+    );
+    
+    // Step 6: Trigger tracking job
+    await io.sendEvent("start-order-tracking", {
+      name: "order.tracking.start",
+      payload: {
+        orderId,
+        shipmentId: shipment.id,
+        trackingNumber: shipment.trackingNumber,
+      },
+    });
+    
+    return {
+      success: true,
+      orderId,
+      paymentId: payment.id,
+      shipmentId: shipment.id,
+      reservations: reservations.map(r => r.id),
+    };
+  },
+});
+
+// Fan-out notification job
+client.defineJob({
+  id: "send-notifications",
+  name: "Send Multi-Channel Notifications",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "notification.send",
+    schema: z.object({
+      userId: z.string(),
+      message: z.string(),
+      channels: z.array(z.enum(['email', 'sms', 'push'])),
+      priority: z.enum(['low', 'normal', 'high']).default('normal'),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    const { userId, message, channels, priority } = payload;
+    
+    // Get user preferences
+    const preferences = await io.runTask(
+      "get-user-preferences",
+      async () => {
+        return await getUserNotificationPreferences(userId);
+      }
+    );
+    
+    // Send notifications to all channels in parallel
+    const results = await Promise.allSettled(
+      channels.map(channel =>
+        io.runTask(
+          `send-${channel}-notification`,
+          async () => {
+            if (!preferences[channel]) {
+              return { skipped: true, reason: 'disabled' };
+            }
+            
+            switch (channel) {
+              case 'email':
+                return await sendEmailNotification(userId, message, priority);
+              case 'sms':
+                return await sendSMSNotification(userId, message, priority);
+              case 'push':
+                return await sendPushNotification(userId, message, priority);
+              default:
+                throw new Error(`Unknown channel: ${channel}`);
+            }
+          },
+          {
+            retry: {
+              limit: priority === 'high' ? 5 : 3,
+            },
+          }
+        )
+      )
+    );
+    
+    return {
+      success: true,
+      userId,
+      results: results.map((result, index) => ({
+        channel: channels[index],
+        status: result.status,
+        result: result.status === 'fulfilled' ? result.value : result.reason,
+      })),
+    };
+  },
+});
+```
+</example>
+</examples>
+</workflow-patterns>
+
+<monitoring-observability>
+<rules>
+- Implement comprehensive logging for all tasks
+- Use proper error tracking and alerting
+- Monitor job performance and duration
+- Set up alerts for failed jobs and retries
+- Track job metrics and success rates
+- Use proper structured logging with context
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Enhanced job with comprehensive monitoring
+client.defineJob({
+  id: "data-processing-pipeline",
+  name: "Data Processing Pipeline",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "data.process",
+    schema: z.object({
+      datasetId: z.string(),
+      userId: z.string(),
+      config: z.object({
+        format: z.enum(['csv', 'json', 'xml']),
+        validation: z.boolean().default(true),
+        transformations: z.array(z.string()),
+      }),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    const { datasetId, userId, config } = payload;
+    const startTime = Date.now();
+    
+    try {
+      // Step 1: Download and validate data
+      const dataset = await io.runTask(
+        "download-dataset",
+        async () => {
+          io.logger.info("Downloading dataset", { datasetId, userId });
+          const data = await downloadDataset(datasetId);
+          
+          if (config.validation) {
+            await validateDataset(data, config.format);
+          }
+          
+          return data;
+        },
+        {
+          retry: {
+            limit: 3,
+            factor: 2,
+          },
+        }
+      );
+      
+      // Step 2: Apply transformations
+      let processedData = dataset;
+      for (const [index, transformation] of config.transformations.entries()) {
+        processedData = await io.runTask(
+          `apply-transformation-${index}`,
+          async () => {
+            io.logger.info("Applying transformation", { 
+              transformation, 
+              index, 
+              datasetId 
+            });
+            return await applyTransformation(processedData, transformation);
+          }
+        );
+      }
+      
+      // Step 3: Save processed data
+      const result = await io.runTask(
+        "save-processed-data",
+        async () => {
+          const savedData = await saveProcessedData(processedData, userId);
+          io.logger.info("Data processing completed", {
+            datasetId,
+            userId,
+            outputSize: savedData.size,
+            processingTimeMs: Date.now() - startTime,
+          });
+          return savedData;
+        }
+      );
+      
+      // Step 4: Send completion notification
+      await io.sendEvent("notify-completion", {
+        name: "data.processing.completed",
+        payload: {
+          userId,
+          datasetId,
+          resultId: result.id,
+          processingTimeMs: Date.now() - startTime,
+        },
+      });
+      
+      return {
+        success: true,
+        datasetId,
+        resultId: result.id,
+        processingTimeMs: Date.now() - startTime,
+        transformationsApplied: config.transformations.length,
+      };
+      
+    } catch (error) {
+      // Enhanced error logging
+      io.logger.error("Data processing failed", {
+        datasetId,
+        userId,
+        error: error.message,
+        stack: error.stack,
+        processingTimeMs: Date.now() - startTime,
+      });
+      
+      // Send failure notification
+      await io.sendEvent("notify-failure", {
+        name: "data.processing.failed",
+        payload: {
+          userId,
+          datasetId,
+          error: error.message,
+          processingTimeMs: Date.now() - startTime,
+        },
+      });
+      
+      throw error;
+    }
+  },
+});
+
+// Monitoring and metrics collection job
+client.defineJob({
+  id: "collect-job-metrics",
+  name: "Collect Job Performance Metrics",
+  version: "1.0.0",
+  trigger: intervalTrigger({
+    seconds: 5 * 60, // Every 5 minutes
+  }),
+  run: async (payload, io, ctx) => {
+    // Collect metrics from the last 5 minutes
+    const metrics = await io.runTask(
+      "collect-metrics",
+      async () => {
+        return await collectJobMetrics(5); // 5 minutes
+      }
+    );
+    
+    // Check for anomalies
+    const anomalies = await io.runTask(
+      "detect-anomalies",
+      async () => {
+        return await detectPerformanceAnomalies(metrics);
+      }
+    );
+    
+    // Send alerts if needed
+    if (anomalies.length > 0) {
+      await io.runTask(
+        "send-performance-alerts",
+        async () => {
+          return await sendPerformanceAlerts(anomalies);
+        }
+      );
+    }
+    
+    return {
+      success: true,
+      metricsCollected: metrics.length,
+      anomaliesDetected: anomalies.length,
+    };
+  },
+});
+```
+</example>
+</examples>
+</monitoring-observability>
+
+<best-practices>
+<job-design>
+- Keep jobs focused and single-purpose
+- Use descriptive job IDs and names
+- Implement proper input validation
+- Design for idempotency and retries
+- Use appropriate task granularity
+- Monitor job performance and costs
+</job-design>
+
+<error-handling>
+- Implement comprehensive retry strategies
+- Use proper error boundaries
+- Log errors with sufficient context
+- Set up alerting for critical failures
+- Implement graceful degradation
+- Use circuit breakers for external services
+</error-handling>
+
+<performance>
+- Use parallel processing where appropriate
+- Implement proper timeout settings
+- Monitor and optimize slow jobs
+- Use appropriate queue priorities
+- Implement efficient data processing
+- Profile and optimize resource usage
+</performance>
+
+<reliability>
+- Design for failure scenarios
+- Implement proper cleanup procedures
+- Use dead letter queues for failed jobs
+- Monitor and alert on job health
+- Implement proper backup strategies
+- Test failure and recovery scenarios
+</reliability>
+</best-practices>
+
+</triggerdev-best-practices>

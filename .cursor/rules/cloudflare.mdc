@@ -1,0 +1,568 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: Cloudflare Workers and platform services best practices including worker development, caching strategies, and edge computing
+globs: []
+alwaysApply: false
+---
+
+<cloudflare-best-practices>
+
+<title>Cloudflare Workers and Platform Services Best Practices</title>
+
+<worker-development>
+<rules>
+- Use TypeScript for better development experience
+- Follow the Fetch API standard for HTTP handling
+- Keep workers lightweight and focused
+- Use proper error handling and status codes
+- Implement caching strategies effectively
+- Use environment variables for configuration
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// worker.ts
+export interface Env {
+  KV_NAMESPACE: KVNamespace;
+  DB: D1Database;
+  BUCKET: R2Bucket;
+  API_KEY: string;
+  ENVIRONMENT: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    
+    // Route handling
+    if (url.pathname === '/api/health') {
+      return handleHealthCheck(request, env);
+    }
+    
+    if (url.pathname.startsWith('/api/users')) {
+      return handleUserAPI(request, env, ctx);
+    }
+    
+    if (url.pathname.startsWith('/api/cache')) {
+      return handleCacheAPI(request, env, ctx);
+    }
+    
+    // Static file serving
+    return handleStaticFiles(request, env);
+  },
+} satisfies ExportedHandler<Env>;
+
+async function handleHealthCheck(request: Request, env: Env): Promise<Response> {
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    environment: env.ENVIRONMENT,
+    region: request.cf?.colo || 'unknown',
+  };
+  
+  return new Response(JSON.stringify(health), {
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+    },
+  });
+}
+
+async function handleUserAPI(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const userId = url.pathname.split('/').pop();
+    
+    if (request.method === 'GET' && userId) {
+      // Check KV cache first
+      const cacheKey = `user:${userId}`;
+      const cached = await env.KV_NAMESPACE.get(cacheKey, { type: 'json' });
+      
+      if (cached) {
+        return new Response(JSON.stringify(cached), {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Cache': 'HIT',
+          },
+        });
+      }
+      
+      // Fetch from database
+      const user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+      
+      if (!user) {
+        return new Response(JSON.stringify({ error: 'User not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      
+      // Cache for 5 minutes
+      ctx.waitUntil(env.KV_NAMESPACE.put(cacheKey, JSON.stringify(user), { expirationTtl: 300 }));
+      
+      return new Response(JSON.stringify(user), {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Cache': 'MISS',
+        },
+      });
+    }
+    
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
+```
+
+```toml
+# wrangler.toml
+name = "my-worker"
+main = "src/worker.ts"
+compatibility_date = "2023-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[env.production]
+name = "my-worker-prod"
+vars = { ENVIRONMENT = "production" }
+
+[env.staging]
+name = "my-worker-staging"
+vars = { ENVIRONMENT = "staging" }
+
+[[kv_namespaces]]
+binding = "KV_NAMESPACE"
+id = "your-kv-namespace-id"
+preview_id = "your-preview-kv-namespace-id"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "my-database"
+database_id = "your-database-id"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "my-bucket"
+preview_bucket_name = "my-preview-bucket"
+```
+</example>
+</examples>
+</worker-development>
+
+<caching-strategies>
+<rules>
+- Use Cache API for HTTP response caching
+- Implement proper cache keys and TTL
+- Use KV storage for persistent caching
+- Handle cache invalidation properly
+- Use edge-side includes for dynamic content
+- Implement cache warming strategies
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Advanced caching utilities
+class CloudflareCache {
+  private cache: Cache;
+  private kv: KVNamespace;
+  
+  constructor(kv: KVNamespace) {
+    this.cache = caches.default;
+    this.kv = kv;
+  }
+  
+  async get(key: string, options?: { type?: 'text' | 'json' | 'blob' }): Promise<any> {
+    // Try Cache API first (faster)
+    const cacheRequest = new Request(`https://cache.internal/${key}`);
+    const cachedResponse = await this.cache.match(cacheRequest);
+    
+    if (cachedResponse) {
+      return options?.type === 'json' 
+        ? await cachedResponse.json()
+        : await cachedResponse.text();
+    }
+    
+    // Fallback to KV
+    return await this.kv.get(key, options);
+  }
+  
+  async put(
+    key: string, 
+    value: any, 
+    options?: { 
+      ttl?: number; 
+      cacheHeaders?: boolean;
+    }
+  ): Promise<void> {
+    const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+    
+    // Store in KV
+    await this.kv.put(key, stringValue, {
+      expirationTtl: options?.ttl || 3600,
+    });
+    
+    // Store in Cache API if cache headers requested
+    if (options?.cacheHeaders) {
+      const cacheRequest = new Request(`https://cache.internal/${key}`);
+      const response = new Response(stringValue, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': `public, max-age=${options.ttl || 3600}`,
+        },
+      });
+      
+      await this.cache.put(cacheRequest, response);
+    }
+  }
+  
+  async delete(key: string): Promise<void> {
+    await Promise.all([
+      this.kv.delete(key),
+      this.cache.delete(`https://cache.internal/${key}`),
+    ]);
+  }
+}
+
+// Cache-aware API handler
+async function handleAPIWithCache(request: Request, env: Env): Promise<Response> {
+  const cache = new CloudflareCache(env.KV_NAMESPACE);
+  const url = new URL(request.url);
+  
+  // Generate cache key
+  const cacheKey = `api:${url.pathname}:${url.search}`;
+  
+  // Check cache first
+  const cached = await cache.get(cacheKey, { type: 'json' });
+  if (cached) {
+    return new Response(JSON.stringify(cached), {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Cache': 'HIT',
+        'Cache-Control': 'public, max-age=300',
+      },
+    });
+  }
+  
+  // Generate fresh data
+  const data = await generateAPIResponse(request, env);
+  
+  // Cache the response
+  await cache.put(cacheKey, data, { ttl: 300, cacheHeaders: true });
+  
+  return new Response(JSON.stringify(data), {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Cache': 'MISS',
+      'Cache-Control': 'public, max-age=300',
+    },
+  });
+}
+```
+</example>
+</examples>
+</caching-strategies>
+
+<security-patterns>
+<rules>
+- Implement proper CORS handling
+- Use Web Crypto API for security operations
+- Validate and sanitize all inputs
+- Implement rate limiting
+- Use proper authentication mechanisms
+- Handle secrets securely
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Security utilities
+class SecurityManager {
+  private kv: KVNamespace;
+  
+  constructor(kv: KVNamespace) {
+    this.kv = kv;
+  }
+  
+  // Rate limiting
+  async checkRateLimit(
+    identifier: string, 
+    limit: number = 100, 
+    window: number = 3600
+  ): Promise<boolean> {
+    const key = `rate_limit:${identifier}:${Math.floor(Date.now() / (window * 1000))}`;
+    const current = await this.kv.get(key);
+    const count = current ? parseInt(current) : 0;
+    
+    if (count >= limit) {
+      return false;
+    }
+    
+    await this.kv.put(key, (count + 1).toString(), { expirationTtl: window });
+    return true;
+  }
+  
+  // CORS handler
+  handleCORS(request: Request, response: Response): Response {
+    const origin = request.headers.get('Origin');
+    const allowedOrigins = ['https://example.com', 'https://app.example.com'];
+    
+    if (origin && allowedOrigins.includes(origin)) {
+      response.headers.set('Access-Control-Allow-Origin', origin);
+    }
+    
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    response.headers.set('Access-Control-Max-Age', '86400');
+    
+    return response;
+  }
+  
+  // JWT validation
+  async validateJWT(token: string, secret: string): Promise<any> {
+    try {
+      const [header, payload, signature] = token.split('.');
+      
+      // Verify signature using Web Crypto API
+      const encoder = new TextEncoder();
+      const data = encoder.encode(`${header}.${payload}`);
+      const key = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['verify']
+      );
+      
+      const expectedSignature = new Uint8Array(
+        await crypto.subtle.sign('HMAC', key, data)
+      );
+      
+      const actualSignature = new Uint8Array(
+        Array.from(atob(signature.replace(/-/g, '+').replace(/_/g, '/')))
+          .map(c => c.charCodeAt(0))
+      );
+      
+      const valid = expectedSignature.length === actualSignature.length &&
+        expectedSignature.every((val, i) => val === actualSignature[i]);
+      
+      if (!valid) {
+        throw new Error('Invalid signature');
+      }
+      
+      return JSON.parse(atob(payload));
+    } catch (error) {
+      throw new Error('Invalid JWT');
+    }
+  }
+}
+
+// Protected API endpoint
+async function handleProtectedAPI(request: Request, env: Env): Promise<Response> {
+  const security = new SecurityManager(env.KV_NAMESPACE);
+  
+  // Rate limiting
+  const clientIP = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const allowed = await security.checkRateLimit(clientIP, 100, 3600);
+  
+  if (!allowed) {
+    return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), {
+      status: 429,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  
+  // Authentication
+  const authorization = request.headers.get('Authorization');
+  if (!authorization || !authorization.startsWith('Bearer ')) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  
+  try {
+    const token = authorization.substring(7);
+    const payload = await security.validateJWT(token, env.JWT_SECRET);
+    
+    // Process the authenticated request
+    const data = await processAuthenticatedRequest(request, payload, env);
+    
+    const response = new Response(JSON.stringify(data), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    
+    return security.handleCORS(request, response);
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Invalid token' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
+```
+</example>
+</examples>
+</security-patterns>
+
+<database-storage>
+<rules>
+- Use D1 for relational data with proper SQL practices
+- Use KV for key-value caching and storage
+- Use R2 for object storage needs
+- Implement proper connection handling
+- Use transactions where appropriate
+- Handle errors gracefully with retries
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Database operations
+class DatabaseManager {
+  private db: D1Database;
+  private kv: KVNamespace;
+  private bucket: R2Bucket;
+  
+  constructor(db: D1Database, kv: KVNamespace, bucket: R2Bucket) {
+    this.db = db;
+    this.kv = kv;
+    this.bucket = bucket;
+  }
+  
+  // D1 operations with retry logic
+  async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3
+  ): Promise<T> {
+    let lastError: Error;
+    
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        if (i < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+        }
+      }
+    }
+    
+    throw lastError!;
+  }
+  
+  // User operations
+  async getUser(id: string): Promise<any> {
+    return await this.executeWithRetry(async () => {
+      return await this.db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
+    });
+  }
+  
+  async createUser(userData: { name: string; email: string }): Promise<any> {
+    return await this.executeWithRetry(async () => {
+      return await this.db.prepare(
+        'INSERT INTO users (id, name, email, created_at) VALUES (?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(),
+        userData.name,
+        userData.email,
+        new Date().toISOString()
+      ).run();
+    });
+  }
+  
+  // Batch operations with transactions
+  async batchUpdateUsers(updates: Array<{ id: string; name: string }>): Promise<void> {
+    const statements = updates.map(update =>
+      this.db.prepare('UPDATE users SET name = ? WHERE id = ?').bind(update.name, update.id)
+    );
+    
+    await this.executeWithRetry(async () => {
+      return await this.db.batch(statements);
+    });
+  }
+  
+  // File upload to R2
+  async uploadFile(key: string, file: ArrayBuffer, metadata?: Record<string, string>): Promise<void> {
+    await this.bucket.put(key, file, {
+      httpMetadata: {
+        contentType: metadata?.contentType || 'application/octet-stream',
+      },
+      customMetadata: metadata,
+    });
+  }
+  
+  // File retrieval from R2
+  async getFile(key: string): Promise<R2Object | null> {
+    return await this.bucket.get(key);
+  }
+  
+  // Cache management
+  async cacheSet(key: string, value: any, ttl: number = 3600): Promise<void> {
+    const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+    await this.kv.put(key, stringValue, { expirationTtl: ttl });
+  }
+  
+  async cacheGet(key: string, type: 'text' | 'json' = 'text'): Promise<any> {
+    return await this.kv.get(key, { type });
+  }
+  
+  async cacheDelete(key: string): Promise<void> {
+    await this.kv.delete(key);
+  }
+}
+```
+</example>
+</examples>
+</database-storage>
+
+<best-practices>
+<performance>
+- Keep workers lightweight and fast
+- Use proper caching strategies
+- Minimize external API calls
+- Use streaming for large responses
+- Implement proper error handling
+- Monitor and optimize cold start times
+</performance>
+
+<security>
+- Validate all inputs thoroughly
+- Use HTTPS everywhere
+- Implement proper authentication
+- Use rate limiting to prevent abuse
+- Handle secrets securely
+- Implement proper CORS policies
+</security>
+
+<development>
+- Use TypeScript for better development experience
+- Implement comprehensive testing
+- Use proper environment management
+- Monitor and log appropriately
+- Use version control for deployments
+- Implement proper CI/CD pipelines
+</development>
+
+<monitoring>
+- Use Cloudflare Analytics for insights
+- Implement proper error tracking
+- Monitor performance metrics
+- Set up alerts for critical issues
+- Track usage and costs
+- Use Real User Monitoring (RUM)
+</monitoring>
+</best-practices>
+
+</cloudflare-best-practices>

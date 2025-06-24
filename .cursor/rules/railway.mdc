@@ -1,0 +1,534 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+description: Railway platform deployment best practices including project configuration, deployment automation, and environment management
+globs: []
+alwaysApply: false
+---
+
+<railway-best-practices>
+
+<title>Railway Platform Deployment Best Practices</title>
+
+<project-configuration>
+<rules>
+- Use environment variables for all configuration
+- Configure proper build and start commands
+- Set up health checks for services
+- Use Railway's automatic deployments from Git
+- Configure proper resource limits and scaling
+- Implement proper logging and monitoring
+</rules>
+
+<examples>
+<example type="good">
+```json
+// railway.json
+{
+  "version": 2,
+  "build": {
+    "builder": "nixpacks",
+    "buildCommand": "npm run build",
+    "watchPatterns": ["**/*.ts", "**/*.js", "**/*.json"]
+  },
+  "deploy": {
+    "startCommand": "npm start",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 10,
+    "restartPolicyType": "on_failure",
+    "restartPolicyMaxRetries": 3
+  },
+  "environments": {
+    "production": {
+      "variables": {
+        "NODE_ENV": "production"
+      }
+    },
+    "staging": {
+      "variables": {
+        "NODE_ENV": "staging"
+      }
+    }
+  }
+}
+```
+
+```toml
+# railway.toml
+[build]
+builder = "nixpacks"
+buildCommand = "npm run build"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/health"
+healthcheckTimeout = 10
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[environments.production]
+NODE_ENV = "production"
+DATABASE_URL = "${{Postgres.DATABASE_URL}}"
+
+[environments.staging]
+NODE_ENV = "staging"
+DATABASE_URL = "${{Postgres_Staging.DATABASE_URL}}"
+```
+</example>
+</examples>
+</project-configuration>
+
+<deployment-automation>
+<rules>
+- Connect GitHub repository for automatic deployments
+- Use Railway CLI for development and deployment
+- Configure proper environment-specific deployments
+- Implement proper database migrations
+- Use Railway's built-in CI/CD features
+- Set up deployment notifications and monitoring
+</rules>
+
+<examples>
+<example type="good">
+```bash
+# Railway CLI commands
+railway login
+railway link
+railway environment
+railway variables set NODE_ENV=production
+railway deploy
+railway logs
+railway shell
+
+# Database operations
+railway connect postgres
+railway run npm run db:migrate
+railway run npm run db:seed
+```
+
+```typescript
+// Database migration script
+// scripts/migrate.ts
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import postgres from 'postgres';
+
+async function runMigrations() {
+  const connectionString = process.env.DATABASE_URL;
+  
+  if (!connectionString) {
+    throw new Error('DATABASE_URL environment variable is required');
+  }
+  
+  const sql = postgres(connectionString, {
+    max: 1,
+    onnotice: () => {}, // Disable notices
+  });
+  
+  const db = drizzle(sql);
+  
+  console.log('Running migrations...');
+  await migrate(db, { migrationsFolder: './drizzle' });
+  console.log('Migrations completed');
+  
+  await sql.end();
+}
+
+runMigrations().catch((error) => {
+  console.error('Migration failed:', error);
+  process.exit(1);
+});
+```
+</example>
+</examples>
+</deployment-automation>
+
+<environment-management>
+<rules>
+- Use Railway's environment variables for configuration
+- Separate environments for development, staging, and production
+- Use service references for database connections
+- Implement proper secrets management
+- Configure environment-specific domains
+- Use Railway's built-in service networking
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Environment configuration
+// lib/config.ts
+import { z } from 'zod';
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'staging', 'production']),
+  PORT: z.string().default('3000'),
+  DATABASE_URL: z.string().url(),
+  REDIS_URL: z.string().url().optional(),
+  JWT_SECRET: z.string().min(32),
+  RAILWAY_ENVIRONMENT: z.string().optional(),
+  RAILWAY_SERVICE_NAME: z.string().optional(),
+  RAILWAY_REPLICA_ID: z.string().optional(),
+});
+
+export const env = envSchema.parse(process.env);
+
+export const config = {
+  isDevelopment: env.NODE_ENV === 'development',
+  isStaging: env.NODE_ENV === 'staging',
+  isProduction: env.NODE_ENV === 'production',
+  isRailway: !!env.RAILWAY_ENVIRONMENT,
+  port: parseInt(env.PORT),
+  database: {
+    url: env.DATABASE_URL,
+  },
+  redis: {
+    url: env.REDIS_URL,
+  },
+  auth: {
+    jwtSecret: env.JWT_SECRET,
+  },
+};
+
+// Service networking
+// lib/service-client.ts
+export class ServiceClient {
+  private baseUrl: string;
+  
+  constructor(serviceName: string, port = 3000) {
+    if (process.env.RAILWAY_ENVIRONMENT) {
+      // Use Railway's internal networking
+      this.baseUrl = `http://${serviceName}.railway.internal:${port}`;
+    } else {
+      // Local development
+      this.baseUrl = `http://localhost:${port}`;
+    }
+  }
+  
+  async request(endpoint: string, options: RequestInit = {}) {
+    const url = `${this.baseUrl}${endpoint}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Railway-Service': process.env.RAILWAY_SERVICE_NAME || 'unknown',
+        ...options.headers,
+      },
+      ...options,
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Service request failed: ${response.status}`);
+    }
+    
+    return response.json();
+  }
+}
+```
+</example>
+</examples>
+</environment-management>
+
+<monitoring-health-checks>
+<rules>
+- Implement comprehensive health check endpoints
+- Use structured logging with proper levels
+- Monitor application metrics and performance
+- Set up error tracking and alerting
+- Use Railway's built-in monitoring features
+- Implement proper observability practices
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Health check implementation
+// pages/api/health.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import { db } from '@/lib/database';
+
+interface HealthCheck {
+  status: 'healthy' | 'unhealthy';
+  timestamp: string;
+  environment: string;
+  service: string;
+  version: string;
+  checks: {
+    database: 'healthy' | 'unhealthy';
+    redis: 'healthy' | 'unhealthy';
+    external_services: 'healthy' | 'unhealthy';
+  };
+  metadata: {
+    uptime: number;
+    memory: {
+      used: number;
+      total: number;
+    };
+    railway: {
+      environment?: string;
+      service?: string;
+      replica?: string;
+    };
+  };
+}
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<HealthCheck>
+) {
+  const startTime = Date.now();
+  
+  try {
+    // Check database
+    const dbHealthy = await checkDatabase();
+    
+    // Check Redis if available
+    const redisHealthy = await checkRedis();
+    
+    // Check external services
+    const externalHealthy = await checkExternalServices();
+    
+    const allHealthy = dbHealthy && redisHealthy && externalHealthy;
+    
+    const health: HealthCheck = {
+      status: allHealthy ? 'healthy' : 'unhealthy',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'unknown',
+      service: process.env.RAILWAY_SERVICE_NAME || 'unknown',
+      version: process.env.npm_package_version || '1.0.0',
+      checks: {
+        database: dbHealthy ? 'healthy' : 'unhealthy',
+        redis: redisHealthy ? 'healthy' : 'unhealthy',
+        external_services: externalHealthy ? 'healthy' : 'unhealthy',
+      },
+      metadata: {
+        uptime: process.uptime(),
+        memory: {
+          used: process.memoryUsage().heapUsed,
+          total: process.memoryUsage().heapTotal,
+        },
+        railway: {
+          environment: process.env.RAILWAY_ENVIRONMENT,
+          service: process.env.RAILWAY_SERVICE_NAME,
+          replica: process.env.RAILWAY_REPLICA_ID,
+        },
+      },
+    };
+    
+    const statusCode = allHealthy ? 200 : 503;
+    const responseTime = Date.now() - startTime;
+    
+    // Add response time header
+    res.setHeader('X-Response-Time', `${responseTime}ms`);
+    
+    res.status(statusCode).json(health);
+  } catch (error) {
+    console.error('Health check failed:', error);
+    
+    res.status(503).json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'unknown',
+      service: process.env.RAILWAY_SERVICE_NAME || 'unknown',
+      version: process.env.npm_package_version || '1.0.0',
+      checks: {
+        database: 'unhealthy',
+        redis: 'unhealthy',
+        external_services: 'unhealthy',
+      },
+      metadata: {
+        uptime: process.uptime(),
+        memory: {
+          used: process.memoryUsage().heapUsed,
+          total: process.memoryUsage().heapTotal,
+        },
+        railway: {
+          environment: process.env.RAILWAY_ENVIRONMENT,
+          service: process.env.RAILWAY_SERVICE_NAME,
+          replica: process.env.RAILWAY_REPLICA_ID,
+        },
+      },
+    } as HealthCheck);
+  }
+}
+
+async function checkDatabase(): Promise<boolean> {
+  try {
+    await db.raw('SELECT 1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function checkRedis(): Promise<boolean> {
+  try {
+    if (!process.env.REDIS_URL) return true;
+    // Redis health check implementation
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function checkExternalServices(): Promise<boolean> {
+  try {
+    // Check external service dependencies
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Structured logging
+// lib/logger.ts
+import winston from 'winston';
+
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: {
+    service: process.env.RAILWAY_SERVICE_NAME || 'app',
+    environment: process.env.RAILWAY_ENVIRONMENT || 'unknown',
+    replica: process.env.RAILWAY_REPLICA_ID || 'unknown',
+  },
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      ),
+    }),
+  ],
+});
+
+export default logger;
+```
+</example>
+</examples>
+</monitoring-health-checks>
+
+<database-integration>
+<rules>
+- Use Railway's PostgreSQL service for database needs
+- Implement proper connection pooling
+- Use environment variables for database configuration
+- Implement proper migration strategies
+- Use Railway's database backups and monitoring
+- Handle database connections efficiently
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Database configuration
+// lib/database.ts
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import { config } from './config';
+
+// Connection pooling for Railway
+const connectionString = config.database.url;
+
+const sql = postgres(connectionString, {
+  max: config.isProduction ? 10 : 5,
+  idle_timeout: 20,
+  max_lifetime: 60 * 30,
+  prepare: false, // Disable prepared statements for Railway
+});
+
+export const db = drizzle(sql);
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('Closing database connection...');
+  await sql.end();
+  process.exit(0);
+});
+
+// Database utilities
+// lib/db-utils.ts
+import { db } from './database';
+import logger from './logger';
+
+export class DatabaseManager {
+  static async testConnection(): Promise<boolean> {
+    try {
+      await db.execute(sql`SELECT 1`);
+      logger.info('Database connection successful');
+      return true;
+    } catch (error) {
+      logger.error('Database connection failed', error);
+      return false;
+    }
+  }
+  
+  static async getStats() {
+    try {
+      const [connectionCount] = await db.execute(sql`
+        SELECT count(*) as connections 
+        FROM pg_stat_activity 
+        WHERE state = 'active'
+      `);
+      
+      return {
+        activeConnections: connectionCount.connections,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      logger.error('Failed to get database stats', error);
+      return null;
+    }
+  }
+}
+```
+</example>
+</examples>
+</database-integration>
+
+<best-practices>
+<deployment>
+- Use Railway CLI for development workflow
+- Connect GitHub for automatic deployments
+- Use environment-specific configurations
+- Implement proper health checks
+- Monitor deployment status and logs
+- Use Railway's rollback features when needed
+</deployment>
+
+<scaling>
+- Configure resource limits appropriately
+- Use Railway's auto-scaling features
+- Monitor resource usage and costs
+- Implement proper connection pooling
+- Use caching strategies for better performance
+- Scale based on actual usage metrics
+</scaling>
+
+<security>
+- Use environment variables for all secrets
+- Implement proper authentication and authorization
+- Use HTTPS everywhere with Railway's SSL
+- Regular security updates and dependency scanning
+- Implement proper input validation
+- Use Railway's private networking features
+</security>
+
+<monitoring>
+- Implement comprehensive logging
+- Use Railway's built-in metrics
+- Set up proper error tracking
+- Monitor application performance
+- Use health checks for reliability
+- Set up alerts for critical issues
+</monitoring>
+</best-practices>
+
+</railway-best-practices>

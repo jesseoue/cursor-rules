@@ -1,0 +1,628 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+---
+description: Neon serverless PostgreSQL database best practices including connection management, database branching, and performance optimization
+globs: []
+alwaysApply: false
+---
+
+<neon-database-best-practices>
+
+<title>Neon Serverless PostgreSQL Database Best Practices</title>
+
+<connection-management>
+<rules>
+- Use Neon's connection pooling for optimal performance
+- Implement proper connection configuration for serverless
+- Use database branching for development and testing
+- Configure appropriate timeout and retry settings
+- Handle connection errors gracefully
+- Use environment-specific database URLs
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Database connection configuration
+// lib/neon.ts
+import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-http';
+import { z } from 'zod';
+
+const envSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  NEON_BRANCH_ID: z.string().optional(),
+  NODE_ENV: z.enum(['development', 'staging', 'production']),
+});
+
+const env = envSchema.parse(process.env);
+
+// Neon serverless connection
+const sql = neon(env.DATABASE_URL);
+export const db = drizzle(sql);
+
+// Connection with pooling for high-traffic applications
+// lib/neon-pool.ts
+import { Pool } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-serverless';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL!,
+  max: 20, // Maximum connections in pool
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
+
+export const pooledDb = drizzle(pool);
+
+// WebSocket connection for real-time features
+// lib/neon-ws.ts
+import { neonConfig } from '@neondatabase/serverless';
+
+// Enable WebSocket for real-time connections
+neonConfig.webSocketConstructor = WebSocket;
+
+const wsClient = neon(process.env.DATABASE_URL!, {
+  webSocketConstructor: WebSocket,
+});
+
+export { wsClient };
+
+// Connection utilities
+export class NeonConnectionManager {
+  private static instance: NeonConnectionManager;
+  private connectionPool: Pool;
+  
+  private constructor() {
+    this.connectionPool = new Pool({
+      connectionString: process.env.DATABASE_URL!,
+      max: process.env.NODE_ENV === 'production' ? 20 : 5,
+      min: 1,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
+    });
+  }
+  
+  static getInstance(): NeonConnectionManager {
+    if (!this.instance) {
+      this.instance = new NeonConnectionManager();
+    }
+    return this.instance;
+  }
+  
+  async getConnection() {
+    return await this.connectionPool.connect();
+  }
+  
+  async healthCheck(): Promise<boolean> {
+    try {
+      const client = await this.getConnection();
+      await client.query('SELECT 1');
+      client.release();
+      return true;
+    } catch (error) {
+      console.error('Neon health check failed:', error);
+      return false;
+    }
+  }
+  
+  async getStats() {
+    try {
+      const client = await this.getConnection();
+      const result = await client.query(`
+        SELECT 
+          count(*) as total_connections,
+          count(*) FILTER (WHERE state = 'active') as active_connections,
+          count(*) FILTER (WHERE state = 'idle') as idle_connections
+        FROM pg_stat_activity 
+        WHERE datname = current_database()
+      `);
+      client.release();
+      return result.rows[0];
+    } catch (error) {
+      console.error('Failed to get connection stats:', error);
+      return null;
+    }
+  }
+}
+```
+</example>
+</examples>
+</connection-management>
+
+<database-branching>
+<rules>
+- Use Neon branches for feature development and testing
+- Create separate branches for staging and production
+- Implement proper branch management workflows
+- Use branch-specific environment variables
+- Clean up unused branches regularly
+- Use branching for database schema testing
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Branch management utilities
+// lib/neon-branches.ts
+import { z } from 'zod';
+
+interface BranchConfig {
+  main: string;
+  development: string;
+  staging: string;
+  feature?: string;
+}
+
+const branchConfigSchema = z.object({
+  NEON_DATABASE_URL_MAIN: z.string().url(),
+  NEON_DATABASE_URL_DEV: z.string().url(),
+  NEON_DATABASE_URL_STAGING: z.string().url(),
+  NEON_DATABASE_URL_FEATURE: z.string().url().optional(),
+  NEON_BRANCH_ID: z.string().optional(),
+  NODE_ENV: z.enum(['development', 'staging', 'production']),
+});
+
+export class NeonBranchManager {
+  private config: BranchConfig;
+  
+  constructor() {
+    const env = branchConfigSchema.parse(process.env);
+    
+    this.config = {
+      main: env.NEON_DATABASE_URL_MAIN,
+      development: env.NEON_DATABASE_URL_DEV,
+      staging: env.NEON_DATABASE_URL_STAGING,
+      feature: env.NEON_DATABASE_URL_FEATURE,
+    };
+  }
+  
+  getDatabaseUrl(): string {
+    const nodeEnv = process.env.NODE_ENV;
+    const branchId = process.env.NEON_BRANCH_ID;
+    
+    // Use feature branch if specified
+    if (branchId && this.config.feature) {
+      return this.config.feature;
+    }
+    
+    // Environment-based selection
+    switch (nodeEnv) {
+      case 'production':
+        return this.config.main;
+      case 'staging':
+        return this.config.staging;
+      case 'development':
+      default:
+        return this.config.development;
+    }
+  }
+  
+  getCurrentBranch(): string {
+    return process.env.NEON_BRANCH_ID || process.env.NODE_ENV || 'main';
+  }
+  
+  isFeatureBranch(): boolean {
+    return !!process.env.NEON_BRANCH_ID && process.env.NODE_ENV !== 'production';
+  }
+}
+
+// Usage in application
+// lib/database.ts
+import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-http';
+import { NeonBranchManager } from './neon-branches';
+
+const branchManager = new NeonBranchManager();
+const databaseUrl = branchManager.getDatabaseUrl();
+
+console.log(`Using Neon branch: ${branchManager.getCurrentBranch()}`);
+
+const sql = neon(databaseUrl);
+export const db = drizzle(sql);
+```
+
+```bash
+# Branch management scripts
+# scripts/create-branch.sh
+#!/bin/bash
+
+BRANCH_NAME=$1
+if [ -z "$BRANCH_NAME" ]; then
+  echo "Usage: ./create-branch.sh <branch-name>"
+  exit 1
+fi
+
+echo "Creating Neon branch: $BRANCH_NAME"
+# Add Neon CLI commands here
+neon branches create --name $BRANCH_NAME
+
+# scripts/deploy-to-branch.sh
+#!/bin/bash
+
+BRANCH_NAME=$1
+if [ -z "$BRANCH_NAME" ]; then
+  echo "Usage: ./deploy-to-branch.sh <branch-name>"
+  exit 1
+fi
+
+export NEON_BRANCH_ID=$BRANCH_NAME
+echo "Deploying to Neon branch: $BRANCH_NAME"
+
+# Run migrations on the specific branch
+npm run db:migrate
+npm run db:seed
+```
+</example>
+</examples>
+</database-branching>
+
+<schema-management>
+<rules>
+- Use proper migration strategies with Neon
+- Implement schema versioning and rollback capabilities
+- Use Drizzle ORM for type-safe database operations
+- Test schema changes on development branches first
+- Implement proper backup strategies before migrations
+- Use Neon's point-in-time recovery features
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Schema definition with Drizzle
+// db/schema.ts
+import { pgTable, serial, text, timestamp, boolean, integer, index } from 'drizzle-orm/pg-core';
+
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  isActive: boolean('is_active').default(true),
+}, (table) => ({
+  emailIdx: index('email_idx').on(table.email),
+  createdAtIdx: index('created_at_idx').on(table.createdAt),
+}));
+
+export const posts = pgTable('posts', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  authorId: integer('author_id').references(() => users.id).notNull(),
+  published: boolean('published').default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  authorIdx: index('author_idx').on(table.authorId),
+  publishedIdx: index('published_idx').on(table.published),
+}));
+
+// Migration utilities
+// lib/migrations.ts
+import { migrate } from 'drizzle-orm/neon-http/migrator';
+import { db } from './database';
+import { NeonBranchManager } from './neon-branches';
+
+export class MigrationManager {
+  private branchManager: NeonBranchManager;
+  
+  constructor() {
+    this.branchManager = new NeonBranchManager();
+  }
+  
+  async runMigrations() {
+    const currentBranch = this.branchManager.getCurrentBranch();
+    
+    console.log(`Running migrations on branch: ${currentBranch}`);
+    
+    try {
+      await migrate(db, { 
+        migrationsFolder: './drizzle/migrations',
+        migrationsTable: 'drizzle_migrations',
+      });
+      
+      console.log('Migrations completed successfully');
+    } catch (error) {
+      console.error('Migration failed:', error);
+      throw error;
+    }
+  }
+  
+  async validateSchema() {
+    try {
+      // Test basic connectivity
+      await db.execute(sql`SELECT 1`);
+      
+      // Check if required tables exist
+      const tables = await db.execute(sql`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+      `);
+      
+      const requiredTables = ['users', 'posts', 'drizzle_migrations'];
+      const existingTables = tables.map(row => row.table_name);
+      
+      const missingTables = requiredTables.filter(
+        table => !existingTables.includes(table)
+      );
+      
+      if (missingTables.length > 0) {
+        throw new Error(`Missing tables: ${missingTables.join(', ')}`);
+      }
+      
+      console.log('Schema validation passed');
+      return true;
+    } catch (error) {
+      console.error('Schema validation failed:', error);
+      return false;
+    }
+  }
+}
+
+// Database seeding
+// lib/seed.ts
+import { db } from './database';
+import { users, posts } from '../db/schema';
+
+export async function seedDatabase() {
+  console.log('Seeding database...');
+  
+  try {
+    // Clear existing data (development only)
+    if (process.env.NODE_ENV !== 'production') {
+      await db.delete(posts);
+      await db.delete(users);
+    }
+    
+    // Insert sample users
+    const insertedUsers = await db.insert(users).values([
+      { name: 'John Doe', email: 'john@example.com' },
+      { name: 'Jane Smith', email: 'jane@example.com' },
+    ]).returning();
+    
+    // Insert sample posts
+    await db.insert(posts).values([
+      {
+        title: 'First Post',
+        content: 'This is the first post',
+        authorId: insertedUsers[0].id,
+        published: true,
+      },
+      {
+        title: 'Second Post',
+        content: 'This is the second post',
+        authorId: insertedUsers[1].id,
+        published: false,
+      },
+    ]);
+    
+    console.log('Database seeded successfully');
+  } catch (error) {
+    console.error('Seeding failed:', error);
+    throw error;
+  }
+}
+```
+</example>
+</examples>
+</schema-management>
+
+<performance-optimization>
+<rules>
+- Use connection pooling for high-traffic applications
+- Implement proper indexing strategies
+- Use Neon's autoscaling features effectively
+- Monitor query performance and optimize slow queries
+- Use prepared statements for repeated queries
+- Implement proper caching strategies
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Performance monitoring and optimization
+// lib/neon-performance.ts
+import { db } from './database';
+
+export class NeonPerformanceMonitor {
+  async getSlowQueries(limit = 10) {
+    try {
+      const result = await db.execute(sql`
+        SELECT 
+          query,
+          calls,
+          total_time,
+          rows,
+          100.0 * shared_blks_hit / nullif(shared_blks_hit + shared_blks_read, 0) AS hit_percent
+        FROM pg_stat_statements 
+        ORDER BY total_time DESC 
+        LIMIT ${limit}
+      `);
+      
+      return result;
+    } catch (error) {
+      console.error('Failed to get slow queries:', error);
+      return [];
+    }
+  }
+  
+  async getDatabaseSize() {
+    try {
+      const result = await db.execute(sql`
+        SELECT 
+          pg_size_pretty(pg_database_size(current_database())) as size,
+          pg_database_size(current_database()) as size_bytes
+      `);
+      
+      return result[0];
+    } catch (error) {
+      console.error('Failed to get database size:', error);
+      return null;
+    }
+  }
+  
+  async getConnectionStats() {
+    try {
+      const result = await db.execute(sql`
+        SELECT 
+          state,
+          count(*) as connections
+        FROM pg_stat_activity 
+        WHERE datname = current_database()
+        GROUP BY state
+      `);
+      
+      return result;
+    } catch (error) {
+      console.error('Failed to get connection stats:', error);
+      return [];
+    }
+  }
+  
+  async analyzeTableStats() {
+    try {
+      const result = await db.execute(sql`
+        SELECT 
+          schemaname,
+          tablename,
+          n_tup_ins as inserts,
+          n_tup_upd as updates,
+          n_tup_del as deletes,
+          n_live_tup as live_tuples,
+          n_dead_tup as dead_tuples,
+          last_vacuum,
+          last_autovacuum,
+          last_analyze,
+          last_autoanalyze
+        FROM pg_stat_user_tables
+        ORDER BY n_live_tup DESC
+      `);
+      
+      return result;
+    } catch (error) {
+      console.error('Failed to analyze table stats:', error);
+      return [];
+    }
+  }
+}
+
+// Query optimization utilities
+// lib/query-optimizer.ts
+import { eq, and, desc, sql } from 'drizzle-orm';
+import { db } from './database';
+import { users, posts } from '../db/schema';
+
+export class QueryOptimizer {
+  // Optimized user queries with proper indexing
+  async getUserWithPosts(userId: number) {
+    // Single query with join - more efficient than N+1
+    const result = await db
+      .select({
+        user: users,
+        posts: posts,
+      })
+      .from(users)
+      .leftJoin(posts, eq(posts.authorId, users.id))
+      .where(eq(users.id, userId));
+    
+    // Group posts by user
+    const userWithPosts = result.reduce((acc, row) => {
+      if (!acc.user) {
+        acc.user = row.user;
+        acc.posts = [];
+      }
+      if (row.posts) {
+        acc.posts.push(row.posts);
+      }
+      return acc;
+    }, { user: null, posts: [] });
+    
+    return userWithPosts;
+  }
+  
+  // Efficient pagination
+  async getPaginatedPosts(page = 1, limit = 10) {
+    const offset = (page - 1) * limit;
+    
+    const [postsResult, countResult] = await Promise.all([
+      db
+        .select()
+        .from(posts)
+        .where(eq(posts.published, true))
+        .orderBy(desc(posts.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ count: sql`count(*)` })
+        .from(posts)
+        .where(eq(posts.published, true))
+    ]);
+    
+    return {
+      posts: postsResult,
+      total: Number(countResult[0].count),
+      page,
+      limit,
+      hasMore: offset + limit < Number(countResult[0].count),
+    };
+  }
+  
+  // Batch operations for better performance
+  async createMultiplePosts(postsData: Array<{
+    title: string;
+    content: string;
+    authorId: number;
+  }>) {
+    return await db.insert(posts).values(postsData).returning();
+  }
+}
+```
+</example>
+</examples>
+</performance-optimization>
+
+<best-practices>
+<connection-management>
+- Use connection pooling for production applications
+- Configure appropriate connection limits and timeouts
+- Handle connection errors with proper retry logic
+- Monitor connection usage and optimize as needed
+- Use Neon's autoscaling features effectively
+- Implement graceful connection cleanup
+</connection-management>
+
+<development-workflow>
+- Use Neon branches for feature development
+- Create separate branches for testing and staging
+- Implement proper migration strategies
+- Use type-safe database operations with Drizzle
+- Test schema changes thoroughly before production
+- Implement proper backup and recovery procedures
+</development-workflow>
+
+<performance>
+- Monitor query performance regularly
+- Use proper indexing strategies
+- Implement efficient pagination patterns
+- Use batch operations where appropriate
+- Cache frequently accessed data
+- Optimize slow queries based on monitoring data
+</performance>
+
+<security>
+- Use environment variables for database URLs
+- Implement proper access controls
+- Regular security updates and vulnerability scanning
+- Use SSL/TLS for all connections
+- Monitor for suspicious database activity
+- Implement proper backup encryption
+</security>
+</best-practices>
+
+</neon-database-best-practices>
