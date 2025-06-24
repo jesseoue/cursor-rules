@@ -1,131 +1,165 @@
 # Comprehensive Cursor Rules for Modern Web Development
 
-A complete collection of production-ready cursor rules for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
+A complete collection of **31 production-ready cursor rules** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
 
 ## 🎯 Overview
 
-This repository contains **19 comprehensive cursor rules** covering the complete modern web development stack, from frontend frameworks to backend services, databases, authentication, payments, and more.
+This repository contains comprehensive cursor rules covering the complete modern web development stack, from core development practices to frontend frameworks, backend services, databases, authentication, payments, and more.
 
-## 📁 Available Rules
+## 📁 Available Rules (31 Total)
 
-### Core Frameworks & Languages
+### 🧭 Meta & Development Guidelines
+- **`_meta-guide.mdc`** - Guide for writing effective cursor rules with proper structure
+- **`direct-tone.mdc`** - Communication style for direct, efficient AI responses
+- **`auto-commit.mdc`** - Git commit conventions and best practices
+
+### 🏗️ Core Frameworks & Languages
 - **`typescript.mdc`** - Strict TypeScript configuration, advanced patterns, and utility types
 - **`nextjs.mdc`** - Next.js App Router, Server Components, API routes, and performance optimization
 - **`react.mdc`** - Modern React patterns, hooks, context, and performance optimization
 
-### Styling & UI
+### 🎨 Styling & UI
 - **`tailwind.mdc`** - Utility-first CSS framework with responsive design patterns
 - **`shadcn.mdc`** - Component library with theming and accessibility
 - **`framer-motion.mdc`** - Animation library with gestures, transitions, and performance
 
-### Form Handling & Validation
+### 📝 Form Handling & Validation
 - **`react-hook-form.mdc`** - Form handling with validation and performance optimization
-- **`zod.mdc`** - Schema validation with type safety and error handling
+- **`zod-v4.mdc`** - Modern Zod v4 schema validation with type inference
 
-### Data Fetching & State Management
+### 🔄 Data Fetching & State Management
 - **`tanstack-query.mdc`** - Data synchronization, caching, and mutations
 - **`supabase.mdc`** - Backend-as-a-service with real-time features and authentication
 
-### Database & ORM
+### 🗄️ Database & ORM
 - **`drizzle.mdc`** - Type-safe SQL ORM with migrations and advanced queries
 
-### Authentication
+### 🔐 Authentication
 - **`clerk.mdc`** - Complete authentication solution with organizations and webhooks
 - **`better-auth.mdc`** - Modern authentication with session management
 
-### Backend & Automation
+### 🚀 Backend & Automation
 - **`inngest.mdc`** - Event-driven functions and background jobs
 - **`trigger.mdc`** - Workflow automation and job processing
 - **`cloudflare-workers.mdc`** - Edge computing with KV, D1, and R2 storage
 
-### Analytics & Data
+### 📊 Analytics & Data
 - **`tinybird.mdc`** - Real-time analytics with ClickHouse and API endpoints
 
-### Payments & Commerce
+### 💳 Payments & Commerce
 - **`stripe.mdc`** - Payment processing, subscriptions, webhooks, and marketplace features
 
-### Development Tools
+### 🛠️ Development Tools
 - **`mcps.mdc`** - Model Context Protocols for enhanced AI development
+
+### 🔧 Code Quality & Architecture
+- **`api-design.mdc`** - RESTful API design standards and best practices
+- **`testing-strategy.mdc`** - Comprehensive testing practices (unit, integration, E2E)
+- **`dependency-injection.mdc`** - DI patterns and IoC container usage
+- **`naming-conventions.mdc`** - Consistent naming for variables, functions, classes
+- **`import-ordering.mdc`** - Standards for organizing import statements
+- **`comment-style.mdc`** - Code commenting and documentation practices
+- **`error-messages.mdc`** - Guidelines for clear, actionable error messages
+- **`async-error-handling.mdc`** - Best practices for async/await error handling
 
 ## 🚀 Quick Start
 
-1. Clone this repository to your local machine
+1. Clone this repository to your project root
 2. Copy the `.cursor/rules/` directory to your project
-3. The rules will automatically attach based on file patterns in your project
+3. The rules will automatically attach based on file patterns
 
 ```bash
 git clone https://github.com/jesseoue/cursor-rules.git
-cp -r cursor-rules/.cursor /path/to/your/project/
+cd your-project
+cp -r ../cursor-rules/.cursor .
 ```
 
 ## 📖 Rule Types
 
-### Always Rules
+### Always Active Rules
+- **Direct Tone** - Always active for efficient communication
 - **TypeScript** - Always included for type safety
 
 ### Auto-Attached Rules
 Most rules auto-attach based on file patterns:
 - React components (`.tsx`, `.jsx`)
-- API routes (`/api/**`)
+- API routes (`/api/**`, `/routes/**`)
 - Database schemas (`schema.ts`, `drizzle.config.ts`)
+- Test files (`*.test.ts`, `*.spec.ts`)
 - Configuration files (`tailwind.config.js`, etc.)
 
-### Agent Requested Rules
-- **MCPs** - Available when the AI needs protocol information
+### Context-Specific Rules
+- **Testing Strategy** - Activates in test files and test directories
+- **API Design** - Activates in API route files
+- **Zod v4** - Activates in TypeScript files for validation
 
-## 🛠 Features
+## 🛠 Enhanced Features
 
 ### ✅ Production Ready
 - Battle-tested patterns and best practices
 - Security considerations and error handling
 - Performance optimization guidelines
+- Modern framework versions and patterns
 
-### ✅ Type Safe
+### ✅ Type Safe & Modern
 - Full TypeScript support with proper type definitions
-- Zod schema validation patterns
+- Zod v4 schema validation patterns
 - Type-safe database operations
+- Latest Next.js App Router patterns
 
-### ✅ Modern Stack
-- Latest framework versions and patterns
-- Server Components and App Router
-- Edge computing and real-time features
+### ✅ Comprehensive Coverage
+- 31 specialized rules covering all aspects of development
+- Code quality and architecture guidelines
+- Testing strategies from unit to E2E
+- API design and error handling standards
 
-### ✅ Comprehensive Examples
-- Complete code examples for every pattern
-- Integration examples between services
-- Testing strategies and utilities
+### ✅ Developer Experience
+- Enhanced autocomplete and intelligent suggestions
+- Consistent patterns and clean architecture
+- Direct communication style for efficient AI assistance
+- Proper rule organization and discovery
 
 ## 📦 Template Package.json
 
-Includes a complete `package.json.template` with all necessary dependencies for modern web development:
+Includes a complete `package.json.template` with all necessary dependencies:
 
-- **Frameworks**: Next.js, React
-- **Styling**: Tailwind CSS, Shadcn/ui
-- **Forms**: React Hook Form, Zod validation
-- **Data**: Tanstack Query, Drizzle ORM
+- **Frameworks**: Next.js, React, TypeScript
+- **Styling**: Tailwind CSS, Shadcn/ui, Framer Motion
+- **Forms**: React Hook Form, Zod v4 validation
+- **Data**: Tanstack Query, Drizzle ORM, Supabase
 - **Auth**: Clerk, Better Auth
 - **Payments**: Stripe
+- **Backend**: Inngest, Trigger.dev, Cloudflare Workers
 - **Analytics**: Tinybird
-- **Animation**: Framer Motion
-- **Backend**: Supabase, Inngest, Trigger.dev
-- **Development**: TypeScript, ESLint, Prettier
+- **Development**: ESLint, Prettier, Testing frameworks
 
 ## 🎨 Best Practices Included
 
 - **Performance**: Optimization patterns for React, Next.js, and animations
 - **Security**: Authentication, authorization, and data validation
 - **Accessibility**: ARIA attributes, keyboard navigation, and screen readers
-- **Testing**: Unit tests, integration tests, and E2E testing strategies
-- **Error Handling**: Comprehensive error boundaries and user feedback
-- **Type Safety**: Strict TypeScript patterns and validation schemas
+- **Testing**: Comprehensive testing strategies and utilities
+- **Error Handling**: Clear error messages and async error patterns
+- **Code Quality**: Naming conventions, import ordering, and documentation
+- **Architecture**: Dependency injection and API design patterns
 
 ## 🌟 Why These Rules?
 
-1. **Comprehensive Coverage** - Everything you need for modern web development
+1. **Comprehensive Coverage** - 31 rules covering every aspect of modern web development
 2. **Production Tested** - Patterns used in real-world applications
 3. **Performance Focused** - Optimization best practices throughout
 4. **Developer Experience** - Enhanced autocomplete and intelligent suggestions
-5. **Maintainable Code** - Consistent patterns and clean architecture
+5. **Modern & Updated** - Latest framework versions and current best practices
+6. **Quality Focused** - Code quality, testing, and architecture guidelines
+
+## 🔧 Writing Your Own Rules
+
+Use the included `_meta-guide.mdc` for guidelines on writing effective cursor rules:
+
+- Simple XML structure for LLM optimization
+- Proper frontmatter with descriptions and file patterns
+- Focus on essential requirements without over-structuring
+- Clear examples and practical guidance
 
 ## 🤝 Contributing
 

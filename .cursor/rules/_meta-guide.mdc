@@ -1,0 +1,163 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+<cursor-rules-guide>
+
+<title>Cursor Rules - Organization and Format</title>
+
+<location>
+<description>All cursor rules should be placed in the `.cursor/rules/` directory with the `.mdc` extension.</description>
+
+<requirements type="dont">
+- `.cursorrules` file in the root (deprecated)
+- Rules in other locations
+- Rules with other extensions
+</requirements>
+
+<requirements type="do">
+- `.cursor/rules/{descriptive-name}.mdc`
+- One rule per file
+- Clear, focused rules
+</requirements>
+</location>
+
+<file-naming>
+<requirements>
+- Use kebab-case: `my-rule-name.mdc`
+- Be descriptive but concise
+- Group related rules with common prefixes
+</requirements>
+
+<examples>
+- `github-actions-runners.mdc`
+- `docker-compose.mdc`
+- `development-workflow.mdc`
+</examples>
+</file-naming>
+
+<frontmatter-requirement>
+<critical>EVERY .mdc file MUST start with frontmatter - files without it won't work</critical>
+
+<template>
+```yaml
+---
+description: What this rule does (LLMs read this to decide relevance)
+globs: []
+alwaysApply: false
+---
+```
+</template>
+
+<notes>
+- description: Required - determines when LLMs read the rule
+- globs: Keep empty for new rules unless specific file patterns needed
+- alwaysApply: Keep false for new rules
+</notes>
+</frontmatter-requirement>
+
+<rule-format>
+<description>Rules must be written for LLM optimization. Prioritize machine readability over human readability.</description>
+
+<critical>START WITH THE SIMPLEST STRUCTURE THAT CLEARLY CONVEYS YOUR RULE</critical>
+
+<decision-tree>
+Ask yourself:
+1. Can I express this rule as a simple list of do's and don'ts? → Use simple template
+2. Does this rule involve multiple interconnected concepts? → Consider complex template
+3. Am I adding sections just because the template has them? → Remove those sections
+4. Am I about to add a second example? → Stop. One is usually enough.
+
+Remember: Empty sections add tokens but no value. Less structure often communicates more clearly.
+</decision-tree>
+
+<simplicity-first>
+<principle>Start with the absolute minimum. You can always add more if truly needed.</principle>
+<warning>If you're thinking "maybe I should add..." - DON'T. Only add what's essential.</warning>
+<rule-of-thumb>If your simple rule exceeds 50 lines, you're probably over-structuring it.</rule-of-thumb>
+</simplicity-first>
+
+<simple-template>
+<description>Use this template for 90% of rules - formatting, naming conventions, simple behaviors</description>
+```yaml
+---
+description: Brief description for LLM rule selection
+globs: []
+alwaysApply: false
+---
+```
+
+```xml
+<rule-name>
+
+<title>Rule Title</title>
+
+<rules>
+- First requirement
+- Second requirement  
+- Third requirement
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Good code example
+```
+</example>
+</examples>
+
+</rule-name>
+```
+
+<stop-here>For most rules, you're done. Only add more sections if the rule is genuinely complex.</stop-here>
+</simple-template>
+
+<xml-tag-guidelines>
+
+<formatting-rules>
+- No markdown headers (#, ##, ###)
+- No text formatting (**bold**, *italic*)
+- No emojis or Unicode symbols
+- No redundant labels
+- Use attributes for categorization
+- Consistent patterns throughout
+- Exception: Use markdown code blocks (```)
+- Exception: Use markdown tables for comparisons
+- Exception: Use backticks for inline code, commands, and technical terms
+- XML tags only
+- Every section needs an XML tag
+- Use dash lists within tags
+- Consistent nesting
+- Semantic names
+- Lowercase with hyphens
+- Attributes for metadata
+- Specific over generic
+- No redundant text
+- No markdown formatting inside XML
+- No visual elements
+</formatting-rules>
+
+<xml-benefits>
+- Unambiguous parsing
+- Explicit hierarchy
+- Consistent extraction
+- No formatting ambiguity
+</xml-benefits>
+
+</xml-tag-guidelines>
+
+<best-practices>
+- Optimize for LLM parsing
+- Use XML structure exclusively
+- Dash lists within tags
+- Semantic tag names
+- Consistent patterns
+- Single-purpose rules
+- Regular updates
+- Remove obsolete rules
+- No visual formatting
+- Let tags convey meaning
+</best-practices>
+
+</cursor-rules-guide>

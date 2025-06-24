@@ -1,0 +1,45 @@
+---
+description: Organize imports with external packages first, internal modules second, relative imports last, with blank lines between groups
+globs:
+alwaysApply: false
+---
+---
+description: Standards for organizing and ordering import statements
+globs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+alwaysApply: false
+---
+
+<import-ordering>
+
+<rules>
+- External packages (from node_modules) must come first
+- Internal/absolute imports (from project root) come second
+- Relative imports (starting with . or ..) come last
+- Each group must be separated by a blank line
+- Within each group, maintain alphabetical order
+- No blank lines within groups
+- Remove unused imports
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// External packages
+import React from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+
+// Internal/absolute imports
+import { API_ENDPOINT } from '@/config/constants';
+import { UserService } from '@/services/UserService';
+import { formatDate } from '@/utils/date';
+
+// Relative imports
+import { Button } from './components/Button';
+import { Header } from './Header';
+import styles from './App.module.css';
+```
+</example>
+</examples>
+
+</import-ordering>
