@@ -1,0 +1,354 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+<environment-management>
+
+<title>Environment Management and Configuration Best Practices</title>
+
+<environment-variables>
+<rules>
+- Use .env files for environment-specific configuration
+- Never commit .env files to version control (use .env.example)
+- Use SCREAMING_SNAKE_CASE for environment variable names
+- Prefix client-side variables with NEXT_PUBLIC_ in Next.js
+- Validate environment variables at startup
+- Use different .env files for different environments
+- Document all environment variables in .env.example
+- Use type-safe environment variable parsing
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// .env.example
+DATABASE_URL=postgresql://user:password@localhost:5432/myapp
+NEXT_PUBLIC_API_URL=https://api.example.com
+JWT_SECRET=your-super-secret-jwt-key
+REDIS_URL=redis://localhost:6379
+STRIPE_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+
+// Environment validation with Zod
+import { z } from 'zod/v4';
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  DATABASE_URL: z.string().url(),
+  JWT_SECRET: z.string().min(32),
+  NEXT_PUBLIC_API_URL: z.string().url(),
+  PORT: z.string().regex(/^\d+$/).transform(Number).default('3000'),
+});
+
+export const env = envSchema.parse(process.env);
+
+// Type-safe config object
+export const config = {
+  database: {
+    url: env.DATABASE_URL,
+  },
+  auth: {
+    jwtSecret: env.JWT_SECRET,
+  },
+  api: {
+    url: env.NEXT_PUBLIC_API_URL,
+  },
+  server: {
+    port: env.PORT,
+  },
+} as const;
+```
+</example>
+</examples>
+</environment-variables>
+
+<configuration-patterns>
+<rules>
+- Centralize configuration in a single config module
+- Use hierarchical configuration (default → environment → local)
+- Implement configuration validation and type safety
+- Support multiple deployment environments (dev, staging, prod)
+- Use feature flags for gradual rollouts
+- Implement configuration hot-reloading for development
+- Document configuration schemas and dependencies
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// config/index.ts
+import { z } from 'zod/v4';
+
+const configSchema = z.object({
+  app: z.object({
+    name: z.string().default('MyApp'),
+    version: z.string().default('1.0.0'),
+    environment: z.enum(['development', 'staging', 'production']),
+  }),
+  database: z.object({
+    url: z.string(),
+    maxConnections: z.number().default(20),
+    ssl: z.boolean().default(false),
+  }),
+  auth: z.object({
+    jwtSecret: z.string(),
+    jwtExpiresIn: z.string().default('15m'),
+    refreshTokenExpiresIn: z.string().default('7d'),
+  }),
+  redis: z.object({
+    url: z.string(),
+    ttl: z.number().default(3600),
+  }),
+  features: z.object({
+    newDashboard: z.boolean().default(false),
+    advancedAnalytics: z.boolean().default(false),
+  }),
+});
+
+// Environment-specific configurations
+const configs = {
+  development: {
+    database: { ssl: false },
+    features: { newDashboard: true },
+  },
+  staging: {
+    database: { ssl: true },
+    features: { newDashboard: true },
+  },
+  production: {
+    database: { ssl: true },
+    features: { newDashboard: false },
+  },
+};
+
+const baseConfig = {
+  app: {
+    name: process.env.APP_NAME || 'MyApp',
+    version: process.env.npm_package_version || '1.0.0',
+    environment: process.env.NODE_ENV as 'development' | 'staging' | 'production',
+  },
+  database: {
+    url: process.env.DATABASE_URL!,
+    maxConnections: Number(process.env.DB_MAX_CONNECTIONS) || 20,
+  },
+  auth: {
+    jwtSecret: process.env.JWT_SECRET!,
+    jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15m',
+  },
+  redis: {
+    url: process.env.REDIS_URL!,
+  },
+};
+
+const environmentConfig = configs[baseConfig.app.environment] || {};
+export const config = configSchema.parse({ ...baseConfig, ...environmentConfig });
+```
+</example>
+</examples>
+</configuration-patterns>
+
+<secrets-management>
+<rules>
+- Never hardcode secrets in source code
+- Use environment variables for local development
+- Use secret management services for production (AWS Secrets Manager, etc.)
+- Rotate secrets regularly and implement automated rotation
+- Use different secrets for different environments
+- Implement proper access controls for secrets
+- Audit secret access and usage
+- Use encrypted storage for sensitive configuration
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Secrets management utility
+import AWS from 'aws-sdk';
+
+class SecretsManager {
+  private client: AWS.SecretsManager;
+  private cache = new Map<string, { value: any; expiry: number }>();
+  
+  constructor() {
+    this.client = new AWS.SecretsManager({
+      region: process.env.AWS_REGION || 'us-east-1',
+    });
+  }
+  
+  async getSecret(secretName: string): Promise<any> {
+    // Check cache first
+    const cached = this.cache.get(secretName);
+    if (cached && cached.expiry > Date.now()) {
+      return cached.value;
+    }
+    
+    try {
+      const result = await this.client.getSecretValue({ SecretId: secretName }).promise();
+      const value = JSON.parse(result.SecretString || '{}');
+      
+      // Cache for 5 minutes
+      this.cache.set(secretName, {
+        value,
+        expiry: Date.now() + 5 * 60 * 1000,
+      });
+      
+      return value;
+    } catch (error) {
+      console.error(`Failed to retrieve secret ${secretName}:`, error);
+      throw error;
+    }
+  }
+}
+
+// Usage
+const secretsManager = new SecretsManager();
+
+export const getDatabaseCredentials = async () => {
+  if (process.env.NODE_ENV === 'development') {
+    return {
+      host: process.env.DB_HOST,
+      username: process.env.DB_USERNAME,
+      password: process.env.DB_PASSWORD,
+    };
+  }
+  
+  return secretsManager.getSecret('prod/database/credentials');
+};
+```
+</example>
+</examples>
+</secrets-management>
+
+<deployment-configuration>
+<rules>
+- Use Infrastructure as Code (Terraform, CloudFormation)
+- Implement blue-green or canary deployments
+- Use different configurations per deployment stage
+- Implement health checks and readiness probes
+- Use configuration drift detection
+- Implement automated rollback on configuration errors
+- Document deployment procedures and rollback plans
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Health check endpoint
+export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    version: config.app.version,
+    environment: config.app.environment,
+    uptime: process.uptime(),
+    checks: {
+      database: checkDatabaseConnection(),
+      redis: checkRedisConnection(),
+      externalApi: checkExternalApiHealth(),
+    },
+  };
+  
+  const allHealthy = Object.values(health.checks).every(check => check === 'healthy');
+  const statusCode = allHealthy ? 200 : 503;
+  
+  res.status(statusCode).json(health);
+}
+
+// Docker configuration
+FROM node:18-alpine AS base
+WORKDIR /app
+
+# Environment-specific build args
+ARG NODE_ENV=production
+ARG BUILD_ENV=production
+
+# Copy package files
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy source code
+COPY . .
+
+# Build application
+RUN npm run build
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health || exit 1
+
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+</example>
+</examples>
+</deployment-configuration>
+
+<logging-monitoring>
+<rules>
+- Implement structured logging with consistent format
+- Use log levels appropriately (error, warn, info, debug)
+- Log configuration changes and access
+- Implement monitoring and alerting for configuration issues
+- Use correlation IDs for distributed tracing
+- Implement log rotation and retention policies
+- Monitor environment variable changes
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Structured logging utility
+import winston from 'winston';
+
+const logger = winston.createLogger({
+  level: config.app.environment === 'production' ? 'info' : 'debug',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: {
+    service: config.app.name,
+    version: config.app.version,
+    environment: config.app.environment,
+  },
+  transports: [
+    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'logs/combined.log' }),
+  ],
+});
+
+if (config.app.environment !== 'production') {
+  logger.add(new winston.transports.Console({
+    format: winston.format.simple()
+  }));
+}
+
+// Configuration change logging
+export const logConfigChange = (key: string, oldValue: any, newValue: any) => {
+  logger.info('Configuration changed', {
+    key,
+    oldValue: typeof oldValue === 'string' ? oldValue : '[OBJECT]',
+    newValue: typeof newValue === 'string' ? newValue : '[OBJECT]',
+    changedAt: new Date().toISOString(),
+  });
+};
+
+// Environment monitoring
+export const monitorEnvironment = () => {
+  setInterval(() => {
+    logger.info('Environment status', {
+      nodeVersion: process.version,
+      uptime: process.uptime(),
+      memoryUsage: process.memoryUsage(),
+      cpuUsage: process.cpuUsage(),
+    });
+  }, 60000); // Every minute
+};
+```
+</example>
+</examples>
+</logging-monitoring>
+
+</environment-management>

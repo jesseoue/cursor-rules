@@ -1,0 +1,302 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+<accessibility-guidelines>
+
+<title>Web Accessibility (A11y) Best Practices</title>
+
+<semantic-html>
+<rules>
+- Use semantic HTML elements (header, nav, main, section, article, aside, footer)
+- Use proper heading hierarchy (h1-h6) without skipping levels
+- Use button elements for interactive actions, not divs
+- Use links (a) for navigation, buttons for actions
+- Use form labels properly associated with inputs
+- Use lists (ul, ol) for grouped content
+- Use tables for tabular data with proper headers
+</rules>
+
+<examples>
+<example type="good">
+```tsx
+// Proper semantic structure
+<main>
+  <header>
+    <h1>Page Title</h1>
+    <nav aria-label="Main navigation">
+      <ul>
+        <li><a href="/home">Home</a></li>
+        <li><a href="/about">About</a></li>
+      </ul>
+    </nav>
+  </header>
+  
+  <section>
+    <h2>Section Title</h2>
+    <article>
+      <h3>Article Title</h3>
+      <p>Content here...</p>
+    </article>
+  </section>
+</main>
+```
+</example>
+</examples>
+</semantic-html>
+
+<aria-attributes>
+<rules>
+- Use aria-label for elements without visible text
+- Use aria-labelledby to reference other elements
+- Use aria-describedby for additional descriptions
+- Use aria-expanded for collapsible content
+- Use aria-hidden="true" for decorative elements
+- Use aria-live for dynamic content updates
+- Use role attribute when semantic HTML isn't sufficient
+- Use aria-required for required form fields
+</rules>
+
+<examples>
+<example type="good">
+```tsx
+// ARIA best practices
+<button 
+  aria-expanded={isOpen}
+  aria-controls="menu"
+  aria-label="Toggle navigation menu"
+>
+  ☰
+</button>
+
+<div 
+  id="menu"
+  aria-hidden={!isOpen}
+  role="menu"
+>
+  <a href="/profile" role="menuitem">Profile</a>
+</div>
+
+<div aria-live="polite" id="status">
+  {statusMessage}
+</div>
+
+<input 
+  type="email"
+  id="email"
+  aria-required="true"
+  aria-describedby="email-help"
+/>
+<div id="email-help">Enter your work email address</div>
+```
+</example>
+</examples>
+</aria-attributes>
+
+<keyboard-navigation>
+<rules>
+- Ensure all interactive elements are keyboard accessible
+- Implement proper focus management and visible focus indicators
+- Use tabindex appropriately (-1 for programmatic focus, 0 for tab order)
+- Implement skip links for main content
+- Handle focus trapping in modals and menus
+- Support standard keyboard shortcuts (Escape, Enter, Space, Arrow keys)
+- Ensure custom components work with screen readers
+</rules>
+
+<examples>
+<example type="good">
+```tsx
+// Keyboard accessible modal
+const Modal = ({ isOpen, onClose, children }) => {
+  const modalRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (isOpen) {
+      modalRef.current?.focus();
+    }
+  }, [isOpen]);
+  
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onClose();
+    }
+  };
+  
+  return (
+    <div
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+      className="focus:outline-none focus:ring-2 focus:ring-blue-500"
+    >
+      {children}
+    </div>
+  );
+};
+```
+</example>
+</examples>
+</keyboard-navigation>
+
+<color-contrast>
+<rules>
+- Ensure minimum contrast ratios (4.5:1 for normal text, 3:1 for large text)
+- Don't rely solely on color to convey information
+- Use patterns, icons, or text labels alongside color
+- Test with color blindness simulators
+- Provide high contrast mode support
+- Use focus indicators that meet contrast requirements
+</rules>
+
+<examples>
+<example type="good">
+```tsx
+// Color-accessible status indicators
+const StatusBadge = ({ status }: { status: 'success' | 'warning' | 'error' }) => {
+  const variants = {
+    success: 'bg-green-100 text-green-800 border-green-200',
+    warning: 'bg-yellow-100 text-yellow-800 border-yellow-200', 
+    error: 'bg-red-100 text-red-800 border-red-200'
+  };
+  
+  const icons = {
+    success: '✓',
+    warning: '⚠',
+    error: '✗'
+  };
+  
+  return (
+    <span className={`inline-flex items-center px-2 py-1 border rounded ${variants[status]}`}>
+      <span className="mr-1" aria-hidden="true">{icons[status]}</span>
+      {status}
+    </span>
+  );
+};
+```
+</example>
+</examples>
+</color-contrast>
+
+<images-media>
+<rules>
+- Provide meaningful alt text for images (empty alt="" for decorative)
+- Use captions and transcripts for videos
+- Provide audio descriptions for visual content
+- Use loading="lazy" for performance without affecting accessibility
+- Ensure media controls are keyboard accessible
+- Provide alternatives for audio-only content
+</rules>
+
+<examples>
+<example type="good">
+```tsx
+// Accessible image component
+const AccessibleImage = ({ 
+  src, 
+  alt, 
+  decorative = false 
+}: { 
+  src: string; 
+  alt: string; 
+  decorative?: boolean; 
+}) => (
+  <img 
+    src={src} 
+    alt={decorative ? "" : alt}
+    loading="lazy"
+    className="focus:outline-none focus:ring-2 focus:ring-offset-2"
+  />
+);
+
+// Video with accessibility features
+<video controls>
+  <source src="video.mp4" type="video/mp4" />
+  <track kind="captions" src="captions.vtt" srcLang="en" label="English" />
+  <track kind="descriptions" src="descriptions.vtt" srcLang="en" label="Audio descriptions" />
+  Your browser does not support the video element.
+</video>
+```
+</example>
+</examples>
+</images-media>
+
+<forms-accessibility>
+<rules>
+- Use proper label association (for/id or wrap with label)
+- Group related form fields with fieldset and legend
+- Provide clear error messages linked to fields
+- Use aria-invalid for fields with errors
+- Indicate required fields clearly
+- Provide help text for complex inputs
+- Use autocomplete attributes appropriately
+</rules>
+
+<examples>
+<example type="good">
+```tsx
+const AccessibleForm = () => (
+  <form>
+    <fieldset>
+      <legend>Personal Information</legend>
+      
+      <div>
+        <label htmlFor="firstName">
+          First Name <span aria-label="required">*</span>
+        </label>
+        <input 
+          id="firstName"
+          type="text"
+          required
+          aria-required="true"
+          aria-describedby="firstName-error"
+          aria-invalid={hasError}
+          autoComplete="given-name"
+        />
+        {hasError && (
+          <div id="firstName-error" role="alert">
+            First name is required
+          </div>
+        )}
+      </div>
+    </fieldset>
+  </form>
+);
+```
+</example>
+</examples>
+</forms-accessibility>
+
+<testing-tools>
+<accessibility-testing>
+- Use automated tools: axe-core, Lighthouse, WAVE
+- Test with screen readers (NVDA, JAWS, VoiceOver)
+- Test keyboard-only navigation
+- Test with high contrast mode
+- Test with zoom up to 200%
+- Validate HTML for semantic correctness
+- Use eslint-plugin-jsx-a11y for React projects
+</accessibility-testing>
+
+<examples>
+<example type="good">
+```typescript
+// Automated accessibility testing
+import { axe, toHaveNoViolations } from 'jest-axe';
+
+expect.extend(toHaveNoViolations);
+
+test('should not have accessibility violations', async () => {
+  const { container } = render(<MyComponent />);
+  const results = await axe(container);
+  expect(results).toHaveNoViolations();
+});
+```
+</example>
+</examples>
+</testing-tools>
+
+</accessibility-guidelines>

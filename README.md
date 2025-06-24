@@ -1,12 +1,12 @@
 # Comprehensive Cursor Rules for Modern Web Development
 
-A complete collection of **31 production-ready cursor rules** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
+A complete collection of **36 production-ready cursor rules** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
 
 ## 🎯 Overview
 
 This repository contains comprehensive cursor rules covering the complete modern web development stack, from core development practices to frontend frameworks, backend services, databases, authentication, payments, and more.
 
-## 📁 Available Rules (31 Total)
+## 📁 Available Rules (36 Total)
 
 ### 🧭 Meta & Development Guidelines
 - **`_meta-guide.mdc`** - Guide for writing effective cursor rules with proper structure
@@ -62,6 +62,18 @@ This repository contains comprehensive cursor rules covering the complete modern
 - **`error-messages.mdc`** - Guidelines for clear, actionable error messages
 - **`async-error-handling.mdc`** - Best practices for async/await error handling
 
+### 🛡️ Security & Performance
+- **`security.mdc`** - Web application security best practices and OWASP guidelines
+- **`performance.mdc`** - Performance optimization for fast, efficient applications
+
+### ♿ UX & Accessibility
+- **`accessibility.mdc`** - Web accessibility (a11y) best practices and WCAG compliance
+- **`seo.mdc`** - SEO optimization for Next.js applications
+
+### 🏗️ Project Organization
+- **`project-structure.mdc`** - File organization and project structure patterns
+- **`environment-management.mdc`** - Environment configuration and secrets management
+
 ## 🚀 Quick Start
 
 1. Clone this repository to your project root
@@ -108,9 +120,11 @@ Most rules auto-attach based on file patterns:
 - Latest Next.js App Router patterns
 
 ### ✅ Comprehensive Coverage
-- 31 specialized rules covering all aspects of development
+- 36 specialized rules covering all aspects of development
 - Code quality and architecture guidelines
+- Security, performance, and accessibility standards
 - Testing strategies from unit to E2E
+- SEO optimization and project organization
 - API design and error handling standards
 
 ### ✅ Developer Experience
@@ -145,7 +159,7 @@ Includes a complete `package.json.template` with all necessary dependencies:
 
 ## 🌟 Why These Rules?
 
-1. **Comprehensive Coverage** - 31 rules covering every aspect of modern web development
+1. **Comprehensive Coverage** - 36 rules covering every aspect of modern web development
 2. **Production Tested** - Patterns used in real-world applications
 3. **Performance Focused** - Optimization best practices throughout
 4. **Developer Experience** - Enhanced autocomplete and intelligent suggestions

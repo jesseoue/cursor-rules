@@ -1,0 +1,148 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+<security-best-practices>
+
+<title>Web Application Security Best Practices</title>
+
+<authentication-security>
+<rules>
+- Always hash passwords with bcrypt (min 12 rounds) or Argon2
+- Implement proper session management with secure cookies
+- Use JWT with short expiration times (15-30 minutes)
+- Implement refresh token rotation
+- Never store sensitive data in localStorage or sessionStorage
+- Use HTTPS everywhere, especially for authentication endpoints
+- Implement rate limiting on authentication endpoints
+- Use CSRF tokens for state-changing operations
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Secure password hashing
+import bcrypt from 'bcrypt';
+
+const hashPassword = async (password: string): Promise<string> => {
+  return bcrypt.hash(password, 12);
+};
+
+// Secure cookie configuration
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict' as const,
+  maxAge: 900000, // 15 minutes
+};
+```
+</example>
+</examples>
+</authentication-security>
+
+<input-validation>
+<rules>
+- Validate all inputs on both client and server side
+- Use schema validation (Zod) for API endpoints
+- Sanitize user inputs to prevent XSS attacks
+- Use parameterized queries to prevent SQL injection
+- Validate file uploads (type, size, content)
+- Implement Content Security Policy (CSP) headers
+- Escape output when rendering user content
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+import { z } from 'zod/v4';
+import DOMPurify from 'dompurify';
+
+const UserSchema = z.object({
+  email: z.email(),
+  password: z.string().min(8).regex(/^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])/),
+  name: z.string().min(1).max(100)
+});
+
+// Sanitize user content
+const sanitizeContent = (content: string): string => {
+  return DOMPurify.sanitize(content);
+};
+```
+</example>
+</examples>
+</input-validation>
+
+<api-security>
+<rules>
+- Implement proper CORS configuration
+- Use API rate limiting and throttling
+- Validate and sanitize all API inputs
+- Implement proper error handling (don't leak sensitive info)
+- Use API versioning for backward compatibility
+- Implement request/response logging for audit trails
+- Use security headers (HSTS, X-Frame-Options, etc.)
+- Implement API key rotation and expiration
+</rules>
+
+<security-headers>
+```typescript
+const securityHeaders = {
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'X-XSS-Protection': '1; mode=block',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'",
+};
+```
+</security-headers>
+</api-security>
+
+<data-protection>
+<rules>
+- Encrypt sensitive data at rest using AES-256
+- Use environment variables for secrets (never hardcode)
+- Implement proper access controls and permissions
+- Regular security audits and dependency updates
+- Use secrets management services (AWS Secrets Manager, etc.)
+- Implement data backup and recovery procedures
+- Follow GDPR/privacy regulations for user data
+- Use secure random number generation for tokens
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Environment-based configuration
+const config = {
+  jwtSecret: process.env.JWT_SECRET!,
+  dbUrl: process.env.DATABASE_URL!,
+  apiKey: process.env.API_KEY!,
+};
+
+// Secure token generation
+import crypto from 'crypto';
+
+const generateSecureToken = (): string => {
+  return crypto.randomBytes(32).toString('hex');
+};
+```
+</example>
+</examples>
+</data-protection>
+
+<common-vulnerabilities>
+<prevention-rules>
+- XSS: Sanitize inputs, use Content Security Policy
+- CSRF: Use anti-CSRF tokens, SameSite cookies
+- SQL Injection: Use parameterized queries, ORM validation
+- Directory Traversal: Validate file paths, use allowlists
+- Insecure Direct Object References: Implement authorization checks
+- Security Misconfiguration: Regular security reviews, automated scans
+- Sensitive Data Exposure: Encrypt data, secure transmission
+- Broken Authentication: Strong password policies, MFA
+</prevention-rules>
+</common-vulnerabilities>
+
+</security-best-practices>

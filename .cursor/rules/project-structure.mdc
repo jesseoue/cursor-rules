@@ -1,0 +1,356 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+<project-structure>
+
+<title>Project Structure and File Organization Best Practices</title>
+
+<nextjs-app-router-structure>
+<rules>
+- Use app directory for Next.js 13+ App Router structure
+- Organize routes with nested folders and page.tsx files
+- Use layout.tsx for shared layouts at each route level
+- Place loading.tsx, error.tsx, and not-found.tsx appropriately
+- Use route groups with (folder) for organization without affecting URL
+- Implement proper component, hook, and utility organization
+- Follow consistent naming conventions throughout the project
+</rules>
+
+<examples>
+<example type="good">
+```
+src/
+├── app/                          # Next.js App Router
+│   ├── (auth)/                   # Route group - doesn't affect URL
+│   │   ├── login/
+│   │   │   └── page.tsx         # /login route
+│   │   ├── register/
+│   │   │   └── page.tsx         # /register route
+│   │   └── layout.tsx           # Auth layout wrapper
+│   ├── (dashboard)/             # Route group for dashboard
+│   │   ├── analytics/
+│   │   │   ├── loading.tsx      # Loading UI for analytics
+│   │   │   └── page.tsx         # /analytics route
+│   │   ├── settings/
+│   │   │   ├── profile/
+│   │   │   │   └── page.tsx     # /settings/profile route
+│   │   │   ├── error.tsx        # Error boundary for settings
+│   │   │   └── page.tsx         # /settings route
+│   │   └── layout.tsx           # Dashboard layout
+│   ├── api/                     # API routes
+│   │   ├── auth/
+│   │   │   └── route.ts         # POST /api/auth
+│   │   ├── users/
+│   │   │   ├── [id]/
+│   │   │   │   └── route.ts     # GET/PUT/DELETE /api/users/[id]
+│   │   │   └── route.ts         # GET/POST /api/users
+│   │   └── webhooks/
+│   │       └── stripe/
+│   │           └── route.ts     # POST /api/webhooks/stripe
+│   ├── globals.css              # Global styles
+│   ├── layout.tsx               # Root layout
+│   ├── loading.tsx              # Global loading UI
+│   ├── error.tsx                # Global error boundary
+│   ├── not-found.tsx            # 404 page
+│   └── page.tsx                 # Home page (/)
+```
+</example>
+</examples>
+</nextjs-app-router-structure>
+
+<component-organization>
+<rules>
+- Group related components in feature-based folders
+- Use index.ts files for clean exports
+- Separate UI components from business logic components
+- Create shared/common components in a dedicated folder
+- Use consistent file naming (PascalCase for components)
+- Co-locate component tests and stories with components
+- Implement proper component composition patterns
+</rules>
+
+<examples>
+<example type="good">
+```
+src/
+├── components/                   # Shared UI components
+│   ├── ui/                      # Base UI components (shadcn-style)
+│   │   ├── button/
+│   │   │   ├── Button.tsx
+│   │   │   ├── Button.test.tsx
+│   │   │   ├── Button.stories.tsx
+│   │   │   └── index.ts
+│   │   ├── input/
+│   │   │   ├── Input.tsx
+│   │   │   └── index.ts
+│   │   └── index.ts             # Export all UI components
+│   ├── layout/                  # Layout-related components
+│   │   ├── Header/
+│   │   │   ├── Header.tsx
+│   │   │   ├── Navigation.tsx
+│   │   │   ├── UserMenu.tsx
+│   │   │   └── index.ts
+│   │   ├── Footer/
+│   │   │   ├── Footer.tsx
+│   │   │   └── index.ts
+│   │   └── index.ts
+│   ├── features/                # Feature-specific components
+│   │   ├── auth/
+│   │   │   ├── LoginForm/
+│   │   │   │   ├── LoginForm.tsx
+│   │   │   │   ├── useLoginForm.ts
+│   │   │   │   └── index.ts
+│   │   │   ├── RegisterForm/
+│   │   │   │   └── RegisterForm.tsx
+│   │   │   └── index.ts
+│   │   ├── dashboard/
+│   │   │   ├── StatsCards/
+│   │   │   ├── ChartWidget/
+│   │   │   └── index.ts
+│   │   └── index.ts
+│   └── index.ts                 # Main component exports
+
+// Clean export pattern - components/ui/index.ts
+export { Button } from './button';
+export { Input } from './input';
+export { Card, CardHeader, CardContent } from './card';
+
+// Feature component with co-located hook
+// components/features/auth/LoginForm/LoginForm.tsx
+import { useLoginForm } from './useLoginForm';
+
+export const LoginForm = () => {
+  const { formData, handleSubmit, isLoading } = useLoginForm();
+  // Component implementation
+};
+```
+</example>
+</examples>
+</component-organization>
+
+<utility-and-lib-structure>
+<rules>
+- Organize utilities by domain/purpose in lib folder
+- Create type definitions in dedicated types folder
+- Use hooks folder for custom React hooks
+- Implement proper service/API layer organization
+- Create constants file for app-wide constants
+- Use utils for pure utility functions
+- Implement proper error handling and validation utilities
+</rules>
+
+<examples>
+<example type="good">
+```
+src/
+├── lib/                         # Core utilities and configurations
+│   ├── auth/                    # Authentication utilities
+│   │   ├── config.ts           # Auth configuration
+│   │   ├── providers.tsx       # Auth providers
+│   │   └── utils.ts            # Auth utility functions
+│   ├── database/               # Database utilities
+│   │   ├── connection.ts       # DB connection setup
+│   │   ├── schema.ts           # Database schema
+│   │   └── migrations/         # Database migrations
+│   ├── api/                    # API utilities
+│   │   ├── client.ts           # API client configuration
+│   │   ├── types.ts            # API type definitions
+│   │   └── endpoints/          # API endpoint handlers
+│   ├── validation/             # Validation schemas
+│   │   ├── auth.ts             # Auth validation schemas
+│   │   ├── user.ts             # User validation schemas
+│   │   └── common.ts           # Common validation utilities
+│   ├── utils/                  # Pure utility functions
+│   │   ├── format.ts           # Formatting utilities
+│   │   ├── date.ts             # Date utilities
+│   │   ├── string.ts           # String utilities
+│   │   └── array.ts            # Array utilities
+│   └── constants.ts            # Application constants
+
+├── types/                      # Type definitions
+│   ├── auth.ts                 # Authentication types
+│   ├── user.ts                 # User-related types
+│   ├── api.ts                  # API response types
+│   └── global.d.ts             # Global type declarations
+
+├── hooks/                      # Custom React hooks
+│   ├── useAuth.ts              # Authentication hook
+│   ├── useLocalStorage.ts      # Local storage hook
+│   ├── useDebounce.ts          # Debounce hook
+│   └── api/                    # API-specific hooks
+│       ├── useUsers.ts         # User API hooks
+│       └── usePosts.ts         # Posts API hooks
+
+├── services/                   # Business logic services
+│   ├── authService.ts          # Authentication service
+│   ├── userService.ts          # User service
+│   ├── emailService.ts         # Email service
+│   └── paymentService.ts       # Payment service
+```
+</example>
+</examples>
+</utility-and-lib-structure>
+
+<configuration-files>
+<rules>
+- Keep configuration files in project root
+- Use consistent naming for config files
+- Implement proper TypeScript configuration
+- Use ESLint and Prettier for code quality
+- Configure proper build and deployment scripts
+- Implement proper environment configuration
+- Use package.json scripts for common tasks
+</rules>
+
+<examples>
+<example type="good">
+```
+project-root/
+├── .env.example                # Environment variables template
+├── .env.local                  # Local environment variables (gitignored)
+├── .gitignore                  # Git ignore rules
+├── .eslintrc.json              # ESLint configuration
+├── .prettierrc                 # Prettier configuration
+├── next.config.js              # Next.js configuration
+├── tailwind.config.ts          # Tailwind CSS configuration
+├── tsconfig.json               # TypeScript configuration
+├── package.json                # Package dependencies and scripts
+├── README.md                   # Project documentation
+├── CHANGELOG.md                # Version history
+└── docs/                       # Additional documentation
+    ├── api.md                  # API documentation
+    ├── deployment.md           # Deployment guide
+    └── contributing.md         # Contributing guidelines
+
+// package.json scripts organization
+{
+  "scripts": {
+    // Development
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    
+    // Code quality
+    "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "type-check": "tsc --noEmit",
+    
+    // Testing
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:e2e": "playwright test",
+    
+    // Database
+    "db:generate": "drizzle-kit generate:pg",
+    "db:migrate": "drizzle-kit push:pg",
+    "db:studio": "drizzle-kit studio",
+    
+    // Deployment
+    "deploy:staging": "vercel --target=staging",
+    "deploy:production": "vercel --prod",
+    
+    // Utilities
+    "clean": "rm -rf .next out dist",
+    "analyze": "cross-env ANALYZE=true next build"
+  }
+}
+```
+</example>
+</examples>
+</configuration-files>
+
+<monorepo-structure>
+<rules>
+- Use consistent package naming and organization
+- Implement proper workspace configuration
+- Share common configurations across packages
+- Use proper dependency management between packages
+- Implement consistent build and test scripts
+- Use tools like Turborepo or Nx for orchestration
+- Organize packages by domain or function
+</rules>
+
+<examples>
+<example type="good">
+```
+monorepo/
+├── packages/
+│   ├── web/                    # Next.js frontend application
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── next.config.js
+│   ├── mobile/                 # React Native mobile app
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── metro.config.js
+│   ├── api/                    # Backend API server
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   ├── ui/                     # Shared UI component library
+│   │   ├── src/
+│   │   │   ├── components/
+│   │   │   └── index.ts
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   ├── config/                 # Shared configurations
+│   │   ├── eslint/
+│   │   ├── typescript/
+│   │   └── tailwind/
+│   └── utils/                  # Shared utilities
+│       ├── src/
+│       ├── package.json
+│       └── tsconfig.json
+├── apps/                       # Alternative app organization
+├── tools/                      # Development tools and scripts
+├── docs/                       # Documentation
+├── package.json                # Root package.json with workspaces
+├── turbo.json                  # Turborepo configuration
+└── tsconfig.json               # Root TypeScript configuration
+
+// Root package.json for workspace
+{
+  "name": "myapp-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules"
+  }
+}
+```
+</example>
+</examples>
+</monorepo-structure>
+
+<naming-conventions>
+<file-naming>
+- Use PascalCase for React components: `UserProfile.tsx`
+- Use camelCase for utilities and hooks: `useAuth.ts`, `formatDate.ts`
+- Use kebab-case for pages and routes: `user-settings/page.tsx`
+- Use UPPERCASE for constants: `API_ENDPOINTS.ts`
+- Use lowercase for configuration files: `next.config.js`
+- Add proper file extensions: `.tsx` for React, `.ts` for TypeScript
+</file-naming>
+
+<folder-naming>
+- Use PascalCase for component folders: `UserProfile/`
+- Use camelCase for utility folders: `dateUtils/`
+- Use kebab-case for feature folders: `user-management/`
+- Use lowercase for configuration folders: `config/`, `lib/`
+- Group related files in folders with `index.ts` exports
+</folder-naming>
+</naming-conventions>
+
+</project-structure>

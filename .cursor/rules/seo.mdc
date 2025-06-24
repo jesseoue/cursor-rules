@@ -1,0 +1,605 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+<seo-best-practices>
+
+<title>SEO Best Practices for Next.js Applications</title>
+
+<metadata-optimization>
+<rules>
+- Use Next.js 13+ Metadata API for static and dynamic metadata
+- Implement proper title and description for each page
+- Use Open Graph and Twitter Card metadata
+- Include canonical URLs to prevent duplicate content
+- Implement proper viewport and charset meta tags
+- Use structured data (JSON-LD) for rich snippets
+- Implement proper language and locale metadata
+- Add robots meta tags for crawling control
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// app/layout.tsx - Root metadata
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: {
+    default: 'MyApp - Best App Ever',
+    template: '%s | MyApp'
+  },
+  description: 'The ultimate application for managing your workflow efficiently',
+  keywords: ['productivity', 'workflow', 'management', 'efficiency'],
+  authors: [{ name: 'MyApp Team', url: 'https://myapp.com' }],
+  creator: 'MyApp Inc.',
+  publisher: 'MyApp Inc.',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: 'https://myapp.com',
+    siteName: 'MyApp',
+    title: 'MyApp - Best App Ever',
+    description: 'The ultimate application for managing your workflow efficiently',
+    images: [
+      {
+        url: 'https://myapp.com/og-image.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'MyApp - Workflow Management',
+      }
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    site: '@myapp',
+    creator: '@myapp',
+    title: 'MyApp - Best App Ever',
+    description: 'The ultimate application for managing your workflow efficiently',
+    images: ['https://myapp.com/twitter-image.jpg'],
+  },
+  verification: {
+    google: 'your-google-verification-code',
+    yandex: 'your-yandex-verification-code',
+  },
+  category: 'technology',
+};
+
+// app/blog/[slug]/page.tsx - Dynamic metadata
+export async function generateMetadata(
+  { params }: { params: { slug: string } }
+): Promise<Metadata> {
+  const post = await getPost(params.slug);
+  
+  if (!post) {
+    return {
+      title: 'Post Not Found',
+      description: 'The requested blog post could not be found.',
+    };
+  }
+  
+  return {
+    title: post.title,
+    description: post.excerpt,
+    keywords: post.tags,
+    authors: [{ name: post.author.name }],
+    publishedTime: post.publishedAt,
+    modifiedTime: post.updatedAt,
+    openGraph: {
+      title: post.title,
+      description: post.excerpt,
+      type: 'article',
+      publishedTime: post.publishedAt,
+      modifiedTime: post.updatedAt,
+      authors: [post.author.name],
+      images: [
+        {
+          url: post.coverImage,
+          width: 1200,
+          height: 630,
+          alt: post.title,
+        }
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: post.title,
+      description: post.excerpt,
+      images: [post.coverImage],
+    },
+    alternates: {
+      canonical: `https://myapp.com/blog/${params.slug}`,
+    },
+  };
+}
+```
+</example>
+</examples>
+</metadata-optimization>
+
+<structured-data>
+<rules>
+- Implement JSON-LD structured data for better search results
+- Use appropriate schema types (Article, Product, Organization, etc.)
+- Include breadcrumb structured data for navigation
+- Add FAQ structured data when applicable
+- Implement product structured data for e-commerce
+- Use organization structured data on main pages
+- Add website search box structured data
+- Validate structured data with Google's Rich Results Test
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// components/StructuredData.tsx
+interface ArticleSchemaProps {
+  article: {
+    title: string;
+    description: string;
+    author: string;
+    publishedAt: string;
+    updatedAt: string;
+    image: string;
+    url: string;
+  };
+}
+
+export const ArticleSchema = ({ article }: ArticleSchemaProps) => {
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: article.title,
+    description: article.description,
+    image: article.image,
+    author: {
+      '@type': 'Person',
+      name: article.author,
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'MyApp',
+      logo: {
+        '@type': 'ImageObject',
+        url: 'https://myapp.com/logo.png',
+      },
+    },
+    datePublished: article.publishedAt,
+    dateModified: article.updatedAt,
+    mainEntityOfPage: {
+      '@type': 'WebPage',
+      '@id': article.url,
+    },
+  };
+  
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+    />
+  );
+};
+
+// Organization schema for homepage
+export const OrganizationSchema = () => {
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'MyApp',
+    url: 'https://myapp.com',
+    logo: 'https://myapp.com/logo.png',
+    description: 'The ultimate application for managing your workflow efficiently',
+    contactPoint: {
+      '@type': 'ContactPoint',
+      telephone: '+1-555-123-4567',
+      contactType: 'customer service',
+      availableLanguage: ['English'],
+    },
+    sameAs: [
+      'https://twitter.com/myapp',
+      'https://linkedin.com/company/myapp',
+      'https://github.com/myapp',
+    ],
+  };
+  
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+    />
+  );
+};
+
+// Breadcrumb schema
+export const BreadcrumbSchema = ({ items }: { items: Array<{ name: string; url: string }> }) => {
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.name,
+      item: item.url,
+    })),
+  };
+  
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+    />
+  );
+};
+```
+</example>
+</examples>
+</structured-data>
+
+<technical-seo>
+<rules>
+- Generate and submit XML sitemaps automatically
+- Implement proper robots.txt configuration
+- Use semantic HTML5 elements for better content structure
+- Optimize Core Web Vitals (LCP, FID, CLS)
+- Implement proper URL structure with meaningful slugs
+- Use breadcrumb navigation for better UX and SEO
+- Implement proper pagination for large content sets
+- Add hreflang attributes for international sites
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// next-sitemap.config.js
+/** @type {import('next-sitemap').IConfig} */
+module.exports = {
+  siteUrl: process.env.SITE_URL || 'https://myapp.com',
+  generateRobotsTxt: true,
+  generateIndexSitemap: false,
+  exclude: ['/admin/*', '/api/*', '/private/*'],
+  robotsTxtOptions: {
+    policies: [
+      {
+        userAgent: '*',
+        allow: '/',
+        disallow: ['/admin', '/api', '/private'],
+      },
+    ],
+    additionalSitemaps: [
+      'https://myapp.com/sitemap-posts.xml',
+      'https://myapp.com/sitemap-products.xml',
+    ],
+  },
+  transform: async (config, path) => {
+    return {
+      loc: path,
+      changefreq: path.includes('/blog/') ? 'weekly' : 'monthly',
+      priority: path === '/' ? 1.0 : 0.7,
+      lastmod: new Date().toISOString(),
+    };
+  },
+};
+
+// app/robots.ts
+import { MetadataRoute } from 'next';
+
+export default function robots(): MetadataRoute.Robots {
+  return {
+    rules: {
+      userAgent: '*',
+      allow: '/',
+      disallow: ['/admin/', '/api/', '/private/'],
+    },
+    sitemap: 'https://myapp.com/sitemap.xml',
+  };
+}
+
+// Breadcrumb component
+export const Breadcrumb = ({ items }: { items: Array<{ name: string; href: string }> }) => (
+  <nav aria-label="Breadcrumb" className="mb-6">
+    <ol className="flex items-center space-x-2">
+      {items.map((item, index) => (
+        <li key={item.href} className="flex items-center">
+          {index > 0 && <span className="mx-2 text-gray-400">/</span>}
+          {index === items.length - 1 ? (
+            <span className="font-medium text-gray-900" aria-current="page">
+              {item.name}
+            </span>
+          ) : (
+            <Link href={item.href} className="text-blue-600 hover:text-blue-800">
+              {item.name}
+            </Link>
+          )}
+        </li>
+      ))}
+    </ol>
+  </nav>
+);
+```
+</example>
+</examples>
+</technical-seo>
+
+<content-optimization>
+<rules>
+- Use proper heading hierarchy (H1, H2, H3) for content structure
+- Write descriptive and keyword-rich alt text for images
+- Implement internal linking strategy for better crawling
+- Use meaningful anchor text for links
+- Optimize content length and readability
+- Include target keywords naturally in content
+- Use semantic HTML for better content understanding
+- Implement proper pagination for large content sets
+</rules>
+
+<examples>
+<example type="good">
+```tsx
+// SEO-optimized blog post component
+export const BlogPost = ({ post }: { post: Post }) => (
+  <article>
+    {/* Proper heading hierarchy */}
+    <header>
+      <h1 className="text-4xl font-bold mb-4">{post.title}</h1>
+      <div className="text-gray-600 mb-8">
+        <time dateTime={post.publishedAt}>
+          {format(new Date(post.publishedAt), 'MMMM d, yyyy')}
+        </time>
+        <span className="mx-2">•</span>
+        <span>{post.readingTime} min read</span>
+      </div>
+    </header>
+    
+    {/* Optimized featured image */}
+    <Image
+      src={post.coverImage}
+      alt={`Cover image for ${post.title} - ${post.imageAlt}`}
+      width={1200}
+      height={630}
+      priority
+      className="w-full h-auto rounded-lg mb-8"
+    />
+    
+    {/* Content with proper structure */}
+    <div className="prose prose-lg max-w-none">
+      {post.content}
+    </div>
+    
+    {/* Related posts with internal linking */}
+    <section className="mt-12">
+      <h2 className="text-2xl font-bold mb-6">Related Articles</h2>
+      <div className="grid md:grid-cols-2 gap-6">
+        {post.relatedPosts.map(relatedPost => (
+          <Link
+            key={relatedPost.slug}
+            href={`/blog/${relatedPost.slug}`}
+            className="block p-4 border rounded-lg hover:shadow-md transition-shadow"
+          >
+            <h3 className="font-semibold mb-2">{relatedPost.title}</h3>
+            <p className="text-gray-600 text-sm">{relatedPost.excerpt}</p>
+          </Link>
+        ))}
+      </div>
+    </section>
+  </article>
+);
+
+// SEO-optimized image component
+export const SEOImage = ({
+  src,
+  alt,
+  title,
+  caption,
+  ...props
+}: {
+  src: string;
+  alt: string;
+  title?: string;
+  caption?: string;
+  [key: string]: any;
+}) => (
+  <figure className="my-8">
+    <Image
+      src={src}
+      alt={alt}
+      title={title}
+      loading="lazy"
+      {...props}
+    />
+    {caption && (
+      <figcaption className="text-sm text-gray-600 text-center mt-2">
+        {caption}
+      </figcaption>
+    )}
+  </figure>
+);
+```
+</example>
+</examples>
+</content-optimization>
+
+<performance-seo>
+<rules>
+- Optimize images with Next.js Image component
+- Implement proper lazy loading for below-fold content
+- Use server-side rendering (SSR) or static generation (SSG) appropriately
+- Minimize blocking JavaScript and CSS
+- Implement proper caching strategies
+- Optimize font loading with font-display: swap
+- Use modern image formats (WebP, AVIF) with fallbacks
+- Implement proper resource hints (preload, prefetch)
+</rules>
+
+<examples>
+<example type="good">
+```tsx
+// app/layout.tsx - Optimized font loading
+import { Inter } from 'next/font/google';
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" className={inter.variable}>
+      <head>
+        {/* Preload critical resources */}
+        <link
+          rel="preload"
+          href="/fonts/custom-font.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin=""
+        />
+        
+        {/* DNS prefetch for external resources */}
+        <link rel="dns-prefetch" href="https://api.myapp.com" />
+        <link rel="preconnect" href="https://cdn.myapp.com" />
+      </head>
+      <body className="font-sans">
+        {children}
+      </body>
+    </html>
+  );
+}
+
+// Optimized page with SSG
+export async function generateStaticParams() {
+  const posts = await getPosts();
+  return posts.map((post) => ({
+    slug: post.slug,
+  }));
+}
+
+export default async function BlogPostPage({
+  params,
+}: {
+  params: { slug: string };
+}) {
+  // Static generation with ISR
+  const post = await getPost(params.slug);
+  
+  return (
+    <>
+      <ArticleSchema article={post} />
+      <BlogPost post={post} />
+    </>
+  );
+}
+
+// next.config.js - Performance optimizations
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  images: {
+    domains: ['cdn.myapp.com'],
+    formats: ['image/webp', 'image/avif'],
+    minimumCacheTTL: 60 * 60 * 24 * 7, // 7 days
+  },
+  compress: true,
+  poweredByHeader: false,
+  generateEtags: false,
+  experimental: {
+    optimizeCss: true,
+  },
+};
+
+module.exports = nextConfig;
+```
+</example>
+</examples>
+</performance-seo>
+
+<international-seo>
+<rules>
+- Implement proper hreflang attributes for multi-language sites
+- Use locale-specific URLs (/en/, /fr/, /es/)
+- Provide translated metadata and structured data
+- Use proper language codes (ISO 639-1)
+- Implement locale-specific sitemaps
+- Use geotargeting in Google Search Console
+- Provide language switcher for users
+- Avoid automatic redirects based on IP location
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// app/[locale]/layout.tsx
+export async function generateMetadata({
+  params: { locale }
+}: {
+  params: { locale: string }
+}): Promise<Metadata> {
+  const t = await getTranslations({ locale, namespace: 'metadata' });
+  
+  return {
+    title: t('title'),
+    description: t('description'),
+    alternates: {
+      canonical: `https://myapp.com/${locale}`,
+      languages: {
+        'en': 'https://myapp.com/en',
+        'fr': 'https://myapp.com/fr',
+        'es': 'https://myapp.com/es',
+        'x-default': 'https://myapp.com/en',
+      },
+    },
+    openGraph: {
+      locale: locale,
+      alternateLocale: ['en', 'fr', 'es'],
+    },
+  };
+}
+
+// Language switcher component
+export const LanguageSwitcher = ({ currentLocale }: { currentLocale: string }) => {
+  const languages = [
+    { code: 'en', name: 'English' },
+    { code: 'fr', name: 'Français' },
+    { code: 'es', name: 'Español' },
+  ];
+  
+  return (
+    <nav aria-label="Language switcher">
+      <ul className="flex space-x-4">
+        {languages.map(lang => (
+          <li key={lang.code}>
+            <Link
+              href={`/${lang.code}`}
+              hrefLang={lang.code}
+              className={currentLocale === lang.code ? 'font-bold' : ''}
+              aria-current={currentLocale === lang.code ? 'page' : undefined}
+            >
+              {lang.name}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+};
+```
+</example>
+</examples>
+</international-seo>
+
+</seo-best-practices>

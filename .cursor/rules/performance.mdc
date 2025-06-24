@@ -1,0 +1,373 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+<performance-optimization>
+
+<title>Web Performance Optimization Best Practices</title>
+
+<bundle-optimization>
+<rules>
+- Use dynamic imports for code splitting and lazy loading
+- Implement tree shaking to eliminate dead code
+- Optimize bundle size with webpack-bundle-analyzer or similar tools
+- Use production builds with minification and compression
+- Split vendor and app bundles appropriately
+- Implement proper caching strategies for static assets
+- Use modern bundlers (Vite, esbuild, swc) for faster builds
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Code splitting with dynamic imports
+const LazyComponent = lazy(() => import('./HeavyComponent'));
+
+// Bundle splitting in Next.js
+const DashboardPage = dynamic(() => import('../components/Dashboard'), {
+  loading: () => <LoadingSpinner />,
+  ssr: false
+});
+
+// Webpack bundle analysis
+"scripts": {
+  "analyze": "cross-env ANALYZE=true next build",
+  "bundle-analyzer": "npx webpack-bundle-analyzer .next/static/chunks/"
+}
+```
+</example>
+</examples>
+</bundle-optimization>
+
+<react-optimization>
+<rules>
+- Use React.memo for expensive component re-renders
+- Implement useMemo and useCallback for expensive computations
+- Avoid creating objects/functions in render (use refs or state)
+- Use useTransition for non-urgent updates
+- Implement virtual scrolling for large lists
+- Avoid unnecessary re-renders with proper dependency arrays
+- Use Suspense for data fetching and code splitting
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Memoized component
+const ExpensiveComponent = memo(({ data }: { data: any[] }) => {
+  const processedData = useMemo(() => 
+    data.map(item => complexProcessing(item)),
+    [data]
+  );
+  
+  const handleClick = useCallback((id: string) => {
+    // Handle click logic
+  }, []);
+  
+  return (
+    <div>
+      {processedData.map(item => (
+        <Item key={item.id} data={item} onClick={handleClick} />
+      ))}
+    </div>
+  );
+});
+
+// Using Suspense for better UX
+<Suspense fallback={<LoadingSkeleton />}>
+  <DataComponent />
+</Suspense>
+
+// Concurrent features
+const [isPending, startTransition] = useTransition();
+
+const handleFilterChange = (newFilter: string) => {
+  startTransition(() => {
+    setFilter(newFilter);
+  });
+};
+```
+</example>
+</examples>
+</react-optimization>
+
+<image-optimization>
+<rules>
+- Use Next.js Image component for automatic optimization
+- Implement responsive images with srcset and sizes
+- Use modern formats (WebP, AVIF) with fallbacks
+- Implement lazy loading for images below the fold
+- Optimize image dimensions and compression
+- Use CDN for image delivery and transformation
+- Implement placeholder images or blur effects
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Next.js optimized images
+import Image from 'next/image';
+
+<Image
+  src="/hero-image.jpg"
+  alt="Hero image"
+  width={1200}
+  height={600}
+  priority={true} // For above-the-fold images
+  placeholder="blur"
+  blurDataURL="data:image/jpeg;base64,..."
+  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+/>
+
+// Progressive loading with intersection observer
+const useProgressiveImage = (src: string) => {
+  const [imgSrc, setImgSrc] = useState('');
+  
+  useEffect(() => {
+    const img = new Image();
+    img.src = src;
+    img.onload = () => setImgSrc(src);
+  }, [src]);
+  
+  return imgSrc;
+};
+```
+</example>
+</examples>
+</image-optimization>
+
+<caching-strategies>
+<rules>
+- Implement browser caching with proper Cache-Control headers
+- Use service workers for offline-first applications
+- Implement stale-while-revalidate for data fetching
+- Use CDN caching for static assets
+- Implement Redis or similar for server-side caching
+- Use HTTP/2 push for critical resources
+- Cache API responses with proper invalidation strategies
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Service worker caching
+self.addEventListener('fetch', (event) => {
+  if (event.request.destination === 'image') {
+    event.respondWith(
+      caches.open('images').then(cache => {
+        return cache.match(event.request).then(response => {
+          return response || fetch(event.request).then(fetchResponse => {
+            cache.put(event.request, fetchResponse.clone());
+            return fetchResponse;
+          });
+        });
+      })
+    );
+  }
+});
+
+// Next.js caching headers
+export async function getStaticProps() {
+  return {
+    props: { data },
+    revalidate: 3600, // ISR with 1 hour revalidation
+  };
+}
+
+// API route caching
+export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=59');
+  // Handler logic
+}
+```
+</example>
+</examples>
+</caching-strategies>
+
+<database-optimization>
+<rules>
+- Use database indexing for frequently queried columns
+- Implement query optimization and avoid N+1 problems
+- Use connection pooling for database connections
+- Implement database query caching
+- Use pagination for large data sets
+- Optimize database schema design
+- Use read replicas for scaling read operations
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Efficient data fetching with Drizzle
+const getUsersWithPosts = async (limit = 10, offset = 0) => {
+  return db
+    .select()
+    .from(users)
+    .leftJoin(posts, eq(users.id, posts.userId))
+    .limit(limit)
+    .offset(offset)
+    .execute();
+};
+
+// Connection pooling
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20, // Maximum connections
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
+
+// Query optimization with indexes
+CREATE INDEX idx_posts_user_id ON posts(user_id);
+CREATE INDEX idx_posts_created_at ON posts(created_at DESC);
+```
+</example>
+</examples>
+</database-optimization>
+
+<loading-performance>
+<rules>
+- Minimize Time to First Byte (TTFB) with edge functions
+- Implement Critical CSS for above-the-fold content
+- Use preload for critical resources
+- Implement resource hints (prefetch, preconnect)
+- Minimize blocking resources in the critical path
+- Use streaming SSR for faster perceived performance
+- Implement proper loading states and skeletons
+</rules>
+
+<examples>
+<example type="good">
+```tsx
+// Critical CSS and resource preloading
+<head>
+  <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossOrigin="" />
+  <link rel="preconnect" href="https://api.example.com" />
+  <link rel="dns-prefetch" href="https://cdn.example.com" />
+  <style dangerouslySetInnerHTML={{ __html: criticalCSS }} />
+</head>
+
+// Streaming SSR in Next.js
+export default function Page() {
+  return (
+    <div>
+      <Header />
+      <Suspense fallback={<PostsSkeleton />}>
+        <Posts />
+      </Suspense>
+      <Suspense fallback={<CommentsSkeleton />}>
+        <Comments />
+      </Suspense>
+    </div>
+  );
+}
+
+// Loading skeletons
+const PostsSkeleton = () => (
+  <div className="animate-pulse">
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div key={i} className="h-24 bg-gray-200 rounded mb-4" />
+    ))}
+  </div>
+);
+```
+</example>
+</examples>
+</loading-performance>
+
+<runtime-optimization>
+<rules>
+- Use Web Workers for CPU-intensive tasks
+- Implement request deduplication for API calls
+- Use debouncing and throttling for user inputs
+- Optimize event listeners and clean up properly
+- Use requestAnimationFrame for animations
+- Implement virtual scrolling for large lists
+- Profile and monitor performance with tools
+</rules>
+
+<examples>
+<example type="good">
+```typescript
+// Web Worker for heavy computations
+// worker.ts
+self.onmessage = function(e) {
+  const result = heavyComputation(e.data);
+  self.postMessage(result);
+};
+
+// Main thread
+const useWebWorker = () => {
+  const workerRef = useRef<Worker>();
+  
+  useEffect(() => {
+    workerRef.current = new Worker('/worker.js');
+    return () => workerRef.current?.terminate();
+  }, []);
+  
+  const computeAsync = (data: any) => {
+    return new Promise(resolve => {
+      workerRef.current!.postMessage(data);
+      workerRef.current!.onmessage = (e) => resolve(e.data);
+    });
+  };
+  
+  return computeAsync;
+};
+
+// Debounced search
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  
+  return debouncedValue;
+};
+```
+</example>
+</examples>
+</runtime-optimization>
+
+<monitoring-tools>
+<performance-measurement>
+- Use Lighthouse for performance audits
+- Implement Core Web Vitals monitoring
+- Use Performance API for custom metrics
+- Set up Real User Monitoring (RUM)
+- Use tools like Vercel Analytics or Google PageSpeed Insights
+- Profile with Chrome DevTools Performance tab
+- Monitor bundle size changes in CI/CD
+</performance-measurement>
+
+<examples>
+<example type="good">
+```typescript
+// Custom performance monitoring
+const measurePerformance = (name: string, fn: () => void) => {
+  performance.mark(`${name}-start`);
+  fn();
+  performance.mark(`${name}-end`);
+  performance.measure(name, `${name}-start`, `${name}-end`);
+  
+  const measure = performance.getEntriesByName(name)[0];
+  console.log(`${name} took ${measure.duration}ms`);
+};
+
+// Core Web Vitals tracking
+import { getCLS, getFID, getFCP, getLCP, getTTFB } from 'web-vitals';
+
+getCLS(console.log);
+getFID(console.log);
+getFCP(console.log);
+getLCP(console.log);
+getTTFB(console.log);
+```
+</example>
+</examples>
+</monitoring-tools>
+
+</performance-optimization>
