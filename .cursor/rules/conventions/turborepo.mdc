@@ -1,0 +1,364 @@
+---
+description: Turborepo monorepo build system with remote caching and parallel execution
+globs: ["turbo.json", "**/turbo.json", "**/.turbo/**", "**/apps/**", "**/packages/**"]
+alwaysApply: false
+---
+
+# Turborepo Monorepo Rules (2025)
+
+## What is Turborepo
+
+Turborepo is a high-performance build system for JavaScript/TypeScript monorepos. It provides intelligent caching, parallel execution, and seamless CI/CD integration.
+
+### Key Benefits
+- **Remote Caching**: Share build artifacts across team and CI
+- **Parallel Execution**: Run tasks across packages simultaneously
+- **Incremental Builds**: Only rebuild what changed
+- **Task Pipelines**: Define task dependencies and ordering
+- **Zero Config**: Works out of the box with pnpm, npm, yarn
+- **Vercel Integration**: First-class deployment support
+
+## Installation & Setup
+
+### Initialize Turborepo
+```bash
+npx create-turbo@latest my-monorepo
+cd my-monorepo
+```
+
+### Monorepo Structure
+```
+my-monorepo/
+├── apps/
+│   ├── web/              # Next.js app
+│   ├── docs/             # Documentation site
+│   └── api/              # Express API
+├── packages/
+│   ├── ui/               # Shared React components
+│   ├── config-eslint/    # Shared ESLint config
+│   ├── config-typescript/# Shared TypeScript config
+│   └── database/         # Shared database logic
+├── turbo.json
+├── package.json
+└── pnpm-workspace.yaml
+```
+
+### Workspace Configuration (pnpm)
+```yaml
+# pnpm-workspace.yaml
+packages:
+  - 'apps/*'
+  - 'packages/*'
+```
+
+### Root package.json
+```json
+{
+  "name": "my-monorepo",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+  },
+  "devDependencies": {
+    "prettier": "latest",
+    "turbo": "latest"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20"
+  }
+}
+```
+
+## Turbo Configuration
+
+### turbo.json
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*local"],
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "type-check": {
+      "dependsOn": ["^type-check"]
+    }
+  }
+}
+```
+
+### Task Dependencies
+
+```json
+{
+  "pipeline": {
+    // Run after all dependencies build
+    "build": {
+      "dependsOn": ["^build"]
+    },
+    // Run after this package builds
+    "test": {
+      "dependsOn": ["build"]
+    },
+    // Run in topological order
+    "deploy": {
+      "dependsOn": ["^deploy", "build", "test"]
+    }
+  }
+}
+```
+
+## Workspace Packages
+
+### Shared UI Package
+```json
+// packages/ui/package.json
+{
+  "name": "@repo/ui",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./button": "./src/button.tsx",
+    "./card": "./src/card.tsx"
+  },
+  "scripts": {
+    "lint": "eslint src/",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@repo/config-typescript": "workspace:*",
+    "@types/react": "^18.0.0",
+    "react": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}
+```
+
+### Using Shared Packages
+```json
+// apps/web/package.json
+{
+  "name": "web",
+  "dependencies": {
+    "@repo/ui": "workspace:*",
+    "@repo/database": "workspace:*",
+    "next": "latest",
+    "react": "^18.0.0"
+  }
+}
+```
+
+```typescript
+// apps/web/app/page.tsx
+import { Button } from '@repo/ui/button'
+import { Card } from '@repo/ui/card'
+
+export default function Page() {
+  return (
+    <Card>
+      <Button>Click me</Button>
+    </Card>
+  )
+}
+```
+
+## Remote Caching
+
+### Enable Remote Caching (Vercel)
+```bash
+# Login to Vercel
+npx turbo login
+
+# Link to remote cache
+npx turbo link
+```
+
+### Custom Remote Cache
+```json
+{
+  "pipeline": {
+    "build": {
+      "outputs": [".next/**", "dist/**"]
+    }
+  },
+  "remoteCache": {
+    "signature": true
+  }
+}
+```
+
+## Running Tasks
+
+### Run Tasks
+```bash
+# Run task in all packages
+turbo build
+
+# Run task in specific package
+turbo build --filter=web
+
+# Run task with dependencies
+turbo build --filter=web...
+
+# Run task without dependencies
+turbo build --filter=web^...
+
+# Run multiple tasks
+turbo build lint test
+
+# Run in parallel
+turbo build --parallel
+
+# Clear cache
+turbo build --force
+
+# Dry run
+turbo build --dry-run
+```
+
+### Filtering Patterns
+```bash
+# Single package
+--filter=web
+
+# Package and dependencies
+--filter=web...
+
+# Package and dependents
+--filter=...web
+
+# Package without dependencies
+--filter=web^...
+
+# Multiple packages
+--filter="{web,docs}"
+
+# Changed packages (git)
+--filter=[HEAD^1]
+
+# Exclude packages
+--filter=!web
+```
+
+## Task Pipelines
+
+### Complex Pipeline
+```json
+{
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**"],
+      "env": ["NODE_ENV"]
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": ["coverage/**"],
+      "inputs": ["src/**", "test/**"]
+    },
+    "lint": {
+      "outputs": []
+    },
+    "deploy": {
+      "dependsOn": ["build", "test", "lint"],
+      "cache": false
+    }
+  }
+}
+```
+
+### Environment Variables
+```json
+{
+  "globalEnv": [
+    "NODE_ENV"
+  ],
+  "pipeline": {
+    "build": {
+      "env": [
+        "NEXT_PUBLIC_API_URL",
+        "DATABASE_URL"
+      ]
+    }
+  }
+}
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install
+      - run: pnpm turbo build test lint
+```
+
+### Vercel Deployment
+```json
+// vercel.json
+{
+  "buildCommand": "turbo build --filter=web",
+  "outputDirectory": "apps/web/.next",
+  "ignoreCommand": "npx turbo-ignore"
+}
+```
+
+## Best Practices
+
+1. **Organize by domain** - apps/ for deployables, packages/ for shared code
+2. **Use workspace protocol** - `workspace:*` for internal dependencies
+3. **Enable remote caching** - Share cache across team and CI
+4. **Filter effectively** - Use filters to run tasks on specific packages
+5. **Cache appropriately** - Don't cache dev/test tasks that need fresh runs
+6. **Define outputs** - Specify what files tasks produce for caching
+7. **Use task dependencies** - `^build` ensures dependencies build first
+8. **Parallel execution** - Let Turbo maximize parallelization
+9. **Shared configs** - packages/ for ESLint, TypeScript, Prettier configs
+10. **Type safety** - Use TypeScript paths for package references
+11. **Incremental adoption** - Start with turbo.json, migrate gradually
+12. **Monitor cache hits** - Use --summarize to see cache effectiveness
+13. **Version consistency** - Lock versions with packageManager field
+14. **CI optimization** - Use remote cache in CI for faster builds
+15. **Prune for deployment** - Use `turbo prune` to create minimal Docker images

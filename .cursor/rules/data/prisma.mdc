@@ -1,0 +1,549 @@
+---
+description: Prisma ORM 6.16+ with Rust-free architecture, omit API, and TypeScript query compiler
+globs: ["**/prisma/**/*.{ts,js}", "schema.prisma", "**/prisma/*.prisma", "**/db/**/*.{ts,js}"]
+alwaysApply: false
+---
+
+# Prisma ORM Rules (v6.16+ - 2025)
+
+## What's New in Prisma ORM (2025)
+
+### Rust-free Architecture (v6.16.0 - September 2025)
+- **90% Smaller Bundle**: Reduced from ~14MB to 1.6MB
+- **3.4x Faster Queries**: New TypeScript Query Compiler
+- **No Native Binaries**: Simplified deployment and platform flexibility
+- **Lower CPU Footprint**: More efficient query execution
+- **ESM-first**: Modern ES modules support
+
+### General Availability Features
+- **omit API**: Most requested feature - exclude fields from queries
+- **Multi-schema Support**: Native multi-schema PostgreSQL support
+- **JSON/Enum in SQLite**: Better SQLite type support
+- **updateManyAndReturn**: Bulk updates with returned data
+- **Auto-generated ULIDs**: Alternative to UUIDs
+- **Sharding Support**: @shardKey for PlanetScale sharding
+
+### Developer Experience
+- **VS Code Database UI**: Visual database management
+- **GitHub Copilot Extension**: Fast documentation lookups
+- **Agent Mode**: Help with migrations and database workflows
+- **Prisma Postgres**: Local database instances by default
+- **Ask AI**: Integrated AI assistance in Prisma Console
+- **2x Faster Migrations**: Optimized shadow database interactions
+
+## Installation & Setup
+
+### Install Prisma
+```bash
+npm install prisma @prisma/client
+npx prisma init
+```
+
+### Prisma Schema (schema.prisma)
+```prisma
+// schema.prisma
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = [] // No preview features needed for GA features!
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Models
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String   // Use omit to exclude from queries
+  posts     Post[]
+  profile   Profile?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}
+
+model Profile {
+  id     String @id @default(cuid())
+  bio    String?
+  avatar String?
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  content   String?
+  published Boolean  @default(false)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  tags      Tag[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+  @@index([published])
+}
+
+model Tag {
+  id    String @id @default(cuid())
+  name  String @unique
+  posts Post[]
+}
+```
+
+### Client Initialization
+```typescript
+// lib/db.ts
+import { PrismaClient } from '@prisma/client'
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined
+}
+
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  })
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+```
+
+## New Features (2025)
+
+### Omit API (GA - Most Requested Feature!)
+```typescript
+import { Prisma } from '@prisma/client'
+
+// Exclude password from all user queries
+const userWithoutPassword = Prisma.validator<Prisma.UserDefaultArgs>()({
+  omit: {
+    password: true,
+  },
+})
+
+// Use in queries
+const user = await prisma.user.findUnique({
+  where: { id: '123' },
+  omit: {
+    password: true, // Password excluded from result
+  },
+})
+
+// Global omit configuration
+const prisma = new PrismaClient({
+  omit: {
+    user: {
+      password: true, // Always exclude password
+    },
+  },
+})
+
+// Override global omit when needed
+const userWithPassword = await prisma.user.findUnique({
+  where: { id: '123' },
+  omit: {
+    password: false, // Include password this time
+  },
+})
+```
+
+### Multi-schema Support (GA)
+```prisma
+// schema.prisma
+generator client {
+  provider        = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public", "auth", "analytics"]
+}
+
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+
+  @@schema("auth")
+}
+
+model Post {
+  id      String @id @default(cuid())
+  title   String
+
+  @@schema("public")
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  action    String
+  timestamp DateTime @default(now())
+
+  @@schema("analytics")
+}
+```
+
+### Auto-generated ULIDs
+```prisma
+model User {
+  id String @id @default(ulid()) // ULID instead of UUID
+  // ULIDs are sortable, URL-safe, and more compact
+}
+```
+
+### Sharding Support (@shardKey)
+```prisma
+// For PlanetScale sharding
+model User {
+  id         String @id
+  tenantId   String @shardKey
+  email      String
+
+  @@index([tenantId, email])
+}
+```
+
+### updateManyAndReturn (2025)
+```typescript
+// Update multiple records and get them back
+const updatedPosts = await prisma.post.updateManyAndReturn({
+  where: {
+    published: false,
+  },
+  data: {
+    published: true,
+  },
+})
+
+// updatedPosts contains all updated records
+console.log(`Published ${updatedPosts.length} posts`)
+```
+
+### JSON Fields in SQLite (2025)
+```prisma
+// Now supported in SQLite!
+model Settings {
+  id       String @id @default(cuid())
+  config   Json   // JSON field in SQLite
+  metadata Json?
+}
+```
+
+## CRUD Operations
+
+### Create
+```typescript
+// Create single record
+const user = await prisma.user.create({
+  data: {
+    email: 'alice@example.com',
+    name: 'Alice',
+    password: await hash('password123'),
+  },
+  omit: {
+    password: true, // Exclude from return
+  },
+})
+
+// Create with relations
+const userWithProfile = await prisma.user.create({
+  data: {
+    email: 'bob@example.com',
+    name: 'Bob',
+    password: await hash('password123'),
+    profile: {
+      create: {
+        bio: 'Software developer',
+        avatar: 'https://example.com/avatar.jpg',
+      },
+    },
+  },
+  include: {
+    profile: true,
+  },
+  omit: {
+    password: true,
+  },
+})
+
+// Bulk create
+const users = await prisma.user.createMany({
+  data: [
+    { email: 'user1@example.com', name: 'User 1', password: 'hash1' },
+    { email: 'user2@example.com', name: 'User 2', password: 'hash2' },
+  ],
+  skipDuplicates: true,
+})
+```
+
+### Read
+```typescript
+// Find unique
+const user = await prisma.user.findUnique({
+  where: { email: 'alice@example.com' },
+  include: {
+    posts: {
+      where: { published: true },
+      orderBy: { createdAt: 'desc' },
+    },
+    profile: true,
+  },
+  omit: { password: true },
+})
+
+// Find many with filters
+const publishedPosts = await prisma.post.findMany({
+  where: {
+    published: true,
+    author: {
+      email: { contains: '@example.com' },
+    },
+  },
+  include: {
+    author: {
+      omit: { password: true },
+    },
+    tags: true,
+  },
+  orderBy: {
+    createdAt: 'desc',
+  },
+  take: 10,
+  skip: 0,
+})
+
+// Count
+const postCount = await prisma.post.count({
+  where: { published: true },
+})
+
+// Aggregate
+const stats = await prisma.post.aggregate({
+  _count: true,
+  _avg: { id: true },
+  where: { published: true },
+})
+```
+
+### Update
+```typescript
+// Update single
+const updatedUser = await prisma.user.update({
+  where: { id: '123' },
+  data: {
+    name: 'Alice Updated',
+  },
+  omit: { password: true },
+})
+
+// Update many and return (2025 feature)
+const publishedPosts = await prisma.post.updateManyAndReturn({
+  where: { published: false },
+  data: { published: true },
+})
+
+// Upsert
+const user = await prisma.user.upsert({
+  where: { email: 'alice@example.com' },
+  update: { name: 'Alice Updated' },
+  create: {
+    email: 'alice@example.com',
+    name: 'Alice',
+    password: await hash('password'),
+  },
+  omit: { password: true },
+})
+```
+
+### Delete
+```typescript
+// Delete single
+await prisma.user.delete({
+  where: { id: '123' },
+})
+
+// Delete many
+await prisma.post.deleteMany({
+  where: {
+    published: false,
+    createdAt: {
+      lt: new Date('2024-01-01'),
+    },
+  },
+})
+```
+
+## Transactions
+
+### Interactive Transactions
+```typescript
+await prisma.$transaction(async (tx) => {
+  const user = await tx.user.create({
+    data: {
+      email: 'alice@example.com',
+      name: 'Alice',
+      password: await hash('password'),
+    },
+  })
+
+  await tx.profile.create({
+    data: {
+      userId: user.id,
+      bio: 'New user',
+    },
+  })
+
+  await tx.post.create({
+    data: {
+      title: 'First post',
+      authorId: user.id,
+    },
+  })
+})
+```
+
+### Sequential Operations
+```typescript
+const [deletedPosts, createdPost] = await prisma.$transaction([
+  prisma.post.deleteMany({ where: { published: false } }),
+  prisma.post.create({
+    data: {
+      title: 'New Post',
+      authorId: 'user-123',
+    },
+  }),
+])
+```
+
+## Advanced Queries
+
+### Filtering
+```typescript
+// Complex where conditions
+const posts = await prisma.post.findMany({
+  where: {
+    AND: [
+      { published: true },
+      {
+        OR: [
+          { title: { contains: 'Prisma' } },
+          { content: { contains: 'Prisma' } },
+        ],
+      },
+    ],
+    author: {
+      email: { endsWith: '@example.com' },
+    },
+    createdAt: {
+      gte: new Date('2024-01-01'),
+      lt: new Date('2025-01-01'),
+    },
+  },
+})
+```
+
+### Pagination
+```typescript
+// Cursor-based pagination
+const posts = await prisma.post.findMany({
+  take: 10,
+  skip: 1, // Skip cursor itself
+  cursor: {
+    id: lastPostId,
+  },
+  orderBy: {
+    createdAt: 'desc',
+  },
+})
+
+// Offset-based pagination
+const page = 2
+const pageSize = 10
+const posts = await prisma.post.findMany({
+  skip: (page - 1) * pageSize,
+  take: pageSize,
+  orderBy: { createdAt: 'desc' },
+})
+```
+
+### Relations
+```typescript
+// Nested reads
+const user = await prisma.user.findUnique({
+  where: { id: '123' },
+  include: {
+    posts: {
+      include: {
+        tags: true,
+      },
+    },
+    profile: true,
+  },
+  omit: { password: true },
+})
+
+// Nested writes
+const post = await prisma.post.create({
+  data: {
+    title: 'New Post',
+    author: {
+      connect: { id: 'user-123' },
+    },
+    tags: {
+      connectOrCreate: [
+        {
+          where: { name: 'typescript' },
+          create: { name: 'typescript' },
+        },
+      ],
+    },
+  },
+})
+```
+
+## Migrations
+
+### Development Workflow
+```bash
+# Create and apply migration
+npx prisma migrate dev --name add_user_role
+
+# Reset database (development only!)
+npx prisma migrate reset
+
+# Generate Prisma Client
+npx prisma generate
+```
+
+### Production Deployment
+```bash
+# Apply pending migrations
+npx prisma migrate deploy
+
+# Check migration status
+npx prisma migrate status
+```
+
+## Best Practices (2025)
+
+1. **Use omit API** - Exclude sensitive fields like passwords globally
+2. **Leverage Rust-free benefits** - Smaller bundles, faster queries
+3. **Use ULIDs over UUIDs** - Better sortability and compactness
+4. **Multi-schema organization** - Separate concerns with schemas
+5. **updateManyAndReturn** - Get updated records in bulk operations
+6. **Connection pooling** - Use PgBouncer or similar in production
+7. **Type safety** - Use Prisma.validator for type-safe configurations
+8. **Soft deletes** - Add deletedAt field instead of hard deletes
+9. **Indexes** - Add @@index for frequently queried fields
+10. **Cascading deletes** - Use onDelete: Cascade for related data
+11. **Transaction isolation** - Use $transaction for atomic operations
+12. **Pagination** - Prefer cursor-based over offset for large datasets
+13. **Prisma Postgres** - Use for local development
+14. **VS Code extension** - Visual database management
+15. **Ask AI** - Use integrated AI for help

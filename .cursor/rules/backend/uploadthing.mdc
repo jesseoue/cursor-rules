@@ -1,0 +1,285 @@
+---
+description: UploadThing file uploads for Next.js with type-safe client and server
+globs: ["**/uploadthing/**/*.{ts,tsx}", "**/api/uploadthing/**/*.{ts,tsx}"]
+alwaysApply: false
+---
+
+# UploadThing File Upload Rules (2025)
+
+## What is UploadThing
+
+UploadThing is a file upload solution for Next.js with type-safe uploads, automatic optimizations, and a generous free tier.
+
+### Key Features
+- **Type Safety**: Full TypeScript support
+- **Automatic Optimizations**: Image optimization, compression
+- **File Validation**: Size, type, count validation
+- **Progress Tracking**: Real-time upload progress
+- **Middleware**: Authentication and authorization
+- **Webhooks**: File upload lifecycle events
+- **Multiple Files**: Batch uploads support
+
+## Installation & Setup
+
+### Install UploadThing
+```bash
+npm install uploadthing @uploadthing/react
+```
+
+### Environment Variables
+```bash
+# .env.local
+UPLOADTHING_SECRET=sk_live_...
+UPLOADTHING_APP_ID=your_app_id
+```
+
+## Server Configuration
+
+### Create Upload Router
+```typescript
+// app/api/uploadthing/core.ts
+import { createUploadthing, type FileRouter } from "uploadthing/next"
+import { getServerSession } from "next-auth"
+
+const f = createUploadthing()
+
+export const ourFileRouter = {
+  // Image uploader
+  imageUploader: f({
+    image: { maxFileSize: "4MB", maxFileCount: 4 },
+  })
+    .middleware(async ({ req }) => {
+      const session = await getServerSession()
+
+      if (!session) throw new Error("Unauthorized")
+
+      return { userId: session.user.id }
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      console.log("Upload complete for userId:", metadata.userId)
+      console.log("File URL:", file.url)
+
+      // Save to database
+      await db.image.create({
+        data: {
+          url: file.url,
+          userId: metadata.userId,
+        },
+      })
+
+      return { uploadedBy: metadata.userId }
+    }),
+
+  // PDF uploader
+  pdfUploader: f({
+    pdf: { maxFileSize: "16MB", maxFileCount: 1 },
+  })
+    .middleware(async () => {
+      const session = await getServerSession()
+      if (!session) throw new Error("Unauthorized")
+      return { userId: session.user.id }
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      await db.document.create({
+        data: {
+          url: file.url,
+          userId: metadata.userId,
+        },
+      })
+    }),
+
+  // Avatar uploader
+  avatarUploader: f({
+    image: { maxFileSize: "2MB", maxFileCount: 1 },
+  })
+    .middleware(async () => {
+      const session = await getServerSession()
+      if (!session) throw new Error("Unauthorized")
+      return { userId: session.user.id }
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      await db.user.update({
+        where: { id: metadata.userId },
+        data: { avatar: file.url },
+      })
+    }),
+} satisfies FileRouter
+
+export type OurFileRouter = typeof ourFileRouter
+```
+
+### API Route
+```typescript
+// app/api/uploadthing/route.ts
+import { createRouteHandler } from "uploadthing/next"
+import { ourFileRouter } from "./core"
+
+export const { GET, POST } = createRouteHandler({
+  router: ourFileRouter,
+})
+```
+
+## Client Usage
+
+### Upload Button Component
+```typescript
+"use client"
+
+import { UploadButton } from "@/utils/uploadthing"
+
+export function ImageUpload() {
+  return (
+    <UploadButton
+      endpoint="imageUploader"
+      onClientUploadComplete={(res) => {
+        console.log("Files: ", res)
+        alert("Upload Completed")
+      }}
+      onUploadError={(error: Error) => {
+        alert(`ERROR! ${error.message}`)
+      }}
+    />
+  )
+}
+```
+
+### Upload Dropzone
+```typescript
+"use client"
+
+import { UploadDropzone } from "@/utils/uploadthing"
+
+export function PDFDropzone() {
+  return (
+    <UploadDropzone
+      endpoint="pdfUploader"
+      onClientUploadComplete={(res) => {
+        console.log("Files: ", res)
+      }}
+      onUploadError={(error: Error) => {
+        alert(`ERROR! ${error.message}`)
+      }}
+    />
+  )
+}
+```
+
+### Custom Upload with useUploadThing
+```typescript
+"use client"
+
+import { useUploadThing } from "@/utils/uploadthing"
+import { useState } from "react"
+
+export function CustomUploader() {
+  const [files, setFiles] = useState<File[]>([])
+
+  const { startUpload, isUploading, permittedFileInfo } = useUploadThing(
+    "imageUploader",
+    {
+      onClientUploadComplete: (res) => {
+        console.log("uploaded successfully!", res)
+      },
+      onUploadError: (error) => {
+        console.error("error occurred while uploading", error)
+      },
+      onUploadBegin: (name) => {
+        console.log("upload has begun for", name)
+      },
+    }
+  )
+
+  return (
+    <div>
+      <input
+        type="file"
+        multiple
+        onChange={(e) => {
+          const files = Array.from(e.target.files || [])
+          setFiles(files)
+        }}
+      />
+
+      <button
+        onClick={() => startUpload(files)}
+        disabled={!files.length || isUploading}
+      >
+        {isUploading ? "Uploading..." : "Upload"}
+      </button>
+
+      {permittedFileInfo && (
+        <div>
+          Max size: {permittedFileInfo.config.image?.maxFileSize}
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+## Advanced Patterns
+
+### With Progress Tracking
+```typescript
+"use client"
+
+import { useUploadThing } from "@/utils/uploadthing"
+import { useState } from "react"
+
+export function ProgressUploader() {
+  const [progress, setProgress] = useState(0)
+
+  const { startUpload, isUploading } = useUploadThing("imageUploader", {
+    onUploadProgress: (p) => {
+      setProgress(p)
+    },
+  })
+
+  return (
+    <div>
+      {isUploading && (
+        <div className="w-full bg-gray-200 rounded">
+          <div
+            className="bg-blue-600 h-2 rounded"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+### Server-Side File Deletion
+```typescript
+// app/actions/delete-file.ts
+"use server"
+
+import { UTApi } from "uploadthing/server"
+
+const utapi = new UTApi()
+
+export async function deleteFile(fileKey: string) {
+  await utapi.deleteFiles(fileKey)
+
+  // Also delete from database
+  await db.image.delete({
+    where: { url: { contains: fileKey } },
+  })
+
+  return { success: true }
+}
+```
+
+## Best Practices
+
+1. **Validate files** - Use maxFileSize and maxFileCount
+2. **Authenticate uploads** - Implement middleware auth checks
+3. **Handle errors** - Provide user feedback on failures
+4. **Show progress** - Use onUploadProgress for UX
+5. **Clean up files** - Delete unused files from storage
+6. **Save metadata** - Store file info in database
+7. **Type safety** - Use TypeScript for router and client
+8. **Optimize images** - UploadThing auto-optimizes
+9. **Rate limiting** - Implement upload rate limits
+10. **File validation** - Check file types in middleware

@@ -1,0 +1,483 @@
+---
+description: tRPC v11 end-to-end typesafe APIs with React Query integration
+globs: ["**/trpc/**/*.{ts,tsx}", "**/server/api/**/*.{ts,tsx}", "**/server/routers/**/*.{ts,tsx}"]
+alwaysApply: false
+---
+
+# tRPC Development Rules (v11 - 2025)
+
+## What is tRPC
+
+tRPC allows you to build fully typesafe APIs without schemas or code generation. It leverages TypeScript to provide end-to-end type safety from server to client, with excellent DX and performance.
+
+### Key Benefits
+- **End-to-end Type Safety**: Share types between client and server
+- **No Code Generation**: Types inferred directly from TypeScript
+- **Excellent DX**: Autocomplete, type checking, and refactoring
+- **Framework Agnostic**: Works with Next.js, Express, Fastify, etc.
+- **React Query Integration**: Built-in data fetching with TanStack Query
+- **Lightweight**: Small bundle size, minimal overhead
+- **Middlewares**: Reusable logic for authentication, logging, etc.
+
+## Installation & Setup
+
+### Install Dependencies
+```bash
+npm install @trpc/server @trpc/client @trpc/react-query @trpc/next @tanstack/react-query zod
+```
+
+### Server Setup (Next.js App Router)
+
+#### Create tRPC Context
+```typescript
+// server/trpc/context.ts
+import { type Session } from 'next-auth'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth'
+
+export async function createContext() {
+  const session = await getServerSession(authOptions)
+
+  return {
+    session,
+    db: prisma,
+  }
+}
+
+export type Context = Awaited<ReturnType<typeof createContext>>
+```
+
+#### Initialize tRPC
+```typescript
+// server/trpc/trpc.ts
+import { initTRPC, TRPCError } from '@trpc/server'
+import { type Context } from './context'
+import superjson from 'superjson'
+import { ZodError } from 'zod'
+
+const t = initTRPC.context<Context>().create({
+  transformer: superjson,
+  errorFormatter({ shape, error }) {
+    return {
+      ...shape,
+      data: {
+        ...shape.data,
+        zodError:
+          error.cause instanceof ZodError ? error.cause.flatten() : null,
+      },
+    }
+  },
+})
+
+// Export reusable router and procedure helpers
+export const router = t.router
+export const publicProcedure = t.procedure
+
+// Protected procedure with auth check
+export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
+  if (!ctx.session || !ctx.session.user) {
+    throw new TRPCError({ code: 'UNAUTHORIZED' })
+  }
+
+  return next({
+    ctx: {
+      session: { ...ctx.session, user: ctx.session.user },
+    },
+  })
+})
+```
+
+#### Define Routers
+```typescript
+// server/routers/user.ts
+import { z } from 'zod'
+import { router, publicProcedure, protectedProcedure } from '../trpc/trpc'
+
+export const userRouter = router({
+  getAll: publicProcedure
+    .query(async ({ ctx }) => {
+      return await ctx.db.user.findMany({
+        omit: { password: true },
+      })
+    }),
+
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const user = await ctx.db.user.findUnique({
+        where: { id: input.id },
+        omit: { password: true },
+      })
+
+      if (!user) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'User not found',
+        })
+      }
+
+      return user
+    }),
+
+  create: protectedProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        name: z.string().min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return await ctx.db.user.create({
+        data: input,
+        omit: { password: true },
+      })
+    }),
+
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(1).optional(),
+        email: z.string().email().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input
+
+      return await ctx.db.user.update({
+        where: { id },
+        data,
+        omit: { password: true },
+      })
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db.user.delete({
+        where: { id: input.id },
+      })
+
+      return { success: true }
+    }),
+})
+```
+
+#### Combine Routers
+```typescript
+// server/routers/_app.ts
+import { router } from '../trpc/trpc'
+import { userRouter } from './user'
+import { postRouter } from './post'
+
+export const appRouter = router({
+  user: userRouter,
+  post: postRouter,
+})
+
+export type AppRouter = typeof appRouter
+```
+
+#### Create API Route (Next.js App Router)
+```typescript
+// app/api/trpc/[trpc]/route.ts
+import { fetchRequestHandler } from '@trpc/server/adapters/fetch'
+import { appRouter } from '@/server/routers/_app'
+import { createContext } from '@/server/trpc/context'
+
+const handler = (req: Request) =>
+  fetchRequestHandler({
+    endpoint: '/api/trpc',
+    req,
+    router: appRouter,
+    createContext,
+  })
+
+export { handler as GET, handler as POST }
+```
+
+### Client Setup
+
+#### Create tRPC Client
+```typescript
+// lib/trpc/client.ts
+import { createTRPCReact } from '@trpc/react-query'
+import { type AppRouter } from '@/server/routers/_app'
+
+export const trpc = createTRPCReact<AppRouter>()
+```
+
+#### Provider Setup
+```typescript
+// app/providers/trpc-provider.tsx
+'use client'
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { httpBatchLink } from '@trpc/client'
+import { useState } from 'react'
+import { trpc } from '@/lib/trpc/client'
+import superjson from 'superjson'
+
+export function TRPCProvider({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient())
+  const [trpcClient] = useState(() =>
+    trpc.createClient({
+      links: [
+        httpBatchLink({
+          url: '/api/trpc',
+          transformer: superjson,
+        }),
+      ],
+    })
+  )
+
+  return (
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    </trpc.Provider>
+  )
+}
+```
+
+## Using tRPC in Components
+
+### Queries
+```typescript
+'use client'
+
+import { trpc } from '@/lib/trpc/client'
+
+export function UserList() {
+  const { data: users, isLoading, error } = trpc.user.getAll.useQuery()
+
+  if (isLoading) return <div>Loading...</div>
+  if (error) return <div>Error: {error.message}</div>
+
+  return (
+    <ul>
+      {users?.map((user) => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  )
+}
+
+// Query with input
+export function UserProfile({ userId }: { userId: string }) {
+  const { data: user } = trpc.user.getById.useQuery({ id: userId })
+
+  if (!user) return null
+
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <p>{user.email}</p>
+    </div>
+  )
+}
+```
+
+### Mutations
+```typescript
+'use client'
+
+import { trpc } from '@/lib/trpc/client'
+import { useState } from 'react'
+
+export function CreateUserForm() {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+
+  const utils = trpc.useUtils()
+
+  const createUser = trpc.user.create.useMutation({
+    onSuccess: () => {
+      // Invalidate and refetch
+      utils.user.getAll.invalidate()
+      setName('')
+      setEmail('')
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    createUser.mutate({ name, email })
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Name"
+        required
+      />
+      <input
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Email"
+        type="email"
+        required
+      />
+      <button type="submit" disabled={createUser.isPending}>
+        {createUser.isPending ? 'Creating...' : 'Create User'}
+      </button>
+      {createUser.error && <p>Error: {createUser.error.message}</p>}
+    </form>
+  )
+}
+```
+
+### Optimistic Updates
+```typescript
+export function UpdateUserName({ userId }: { userId: string }) {
+  const utils = trpc.useUtils()
+
+  const updateUser = trpc.user.update.useMutation({
+    onMutate: async (newData) => {
+      // Cancel outgoing refetches
+      await utils.user.getById.cancel({ id: userId })
+
+      // Snapshot previous value
+      const previousUser = utils.user.getById.getData({ id: userId })
+
+      // Optimistically update
+      utils.user.getById.setData({ id: userId }, (old) =>
+        old ? { ...old, ...newData } : old
+      )
+
+      return { previousUser }
+    },
+    onError: (err, newData, context) => {
+      // Rollback on error
+      if (context?.previousUser) {
+        utils.user.getById.setData({ id: userId }, context.previousUser)
+      }
+    },
+    onSettled: () => {
+      // Refetch after mutation
+      utils.user.getById.invalidate({ id: userId })
+    },
+  })
+
+  return (
+    <button onClick={() => updateUser.mutate({ id: userId, name: 'New Name' })}>
+      Update Name
+    </button>
+  )
+}
+```
+
+## Advanced Patterns
+
+### Middlewares
+```typescript
+// server/trpc/trpc.ts
+
+// Logging middleware
+const loggerMiddleware = t.middleware(async ({ path, type, next }) => {
+  const start = Date.now()
+  const result = await next()
+  const durationMs = Date.now() - start
+
+  console.log(`${type} ${path} took ${durationMs}ms`)
+
+  return result
+})
+
+// Rate limiting middleware
+const rateLimitMiddleware = t.middleware(async ({ ctx, next }) => {
+  const identifier = ctx.session?.user?.id || 'anonymous'
+
+  const { success } = await rateLimit.check(identifier)
+
+  if (!success) {
+    throw new TRPCError({
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Rate limit exceeded',
+    })
+  }
+
+  return next()
+})
+
+// Apply middlewares
+export const rateLimitedProcedure = publicProcedure
+  .use(loggerMiddleware)
+  .use(rateLimitMiddleware)
+```
+
+### Subscriptions (WebSocket)
+```typescript
+// server/routers/chat.ts
+import { observable } from '@trpc/server/observable'
+import { EventEmitter } from 'events'
+
+const ee = new EventEmitter()
+
+export const chatRouter = router({
+  onMessage: publicProcedure
+    .subscription(() => {
+      return observable<{ message: string }>((emit) => {
+        const onMessage = (data: { message: string }) => {
+          emit.next(data)
+        }
+
+        ee.on('message', onMessage)
+
+        return () => {
+          ee.off('message', onMessage)
+        }
+      })
+    }),
+
+  sendMessage: publicProcedure
+    .input(z.object({ message: z.string() }))
+    .mutation(({ input }) => {
+      ee.emit('message', input)
+      return { success: true }
+    }),
+})
+```
+
+### Server-Side Calls
+```typescript
+// app/page.tsx (Server Component)
+import { appRouter } from '@/server/routers/_app'
+import { createContext } from '@/server/trpc/context'
+
+export default async function HomePage() {
+  const ctx = await createContext()
+  const caller = appRouter.createCaller(ctx)
+
+  const users = await caller.user.getAll()
+
+  return (
+    <div>
+      {users.map((user) => (
+        <div key={user.id}>{user.name}</div>
+      ))}
+    </div>
+  )
+}
+```
+
+## Best Practices
+
+1. **Use Zod for validation** - Type-safe input validation
+2. **Organize by feature** - Split routers by domain (user, post, etc.)
+3. **Leverage middlewares** - Reusable logic (auth, logging, rate limiting)
+4. **Optimistic updates** - Better UX with immediate feedback
+5. **Error handling** - Use TRPCError with proper error codes
+6. **Batch requests** - Use httpBatchLink for performance
+7. **SuperJSON** - Serialize Dates, Maps, Sets automatically
+8. **Type inference** - Let TypeScript infer types from procedures
+9. **Server-side calls** - Use createCaller in Server Components
+10. **Invalidate queries** - Use utils.invalidate after mutations
+11. **Protected procedures** - Separate public and authenticated routes
+12. **Input validation** - Always validate inputs with Zod
+13. **Context typing** - Strong type your context
+14. **Error formatting** - Custom error formatter for better errors
+15. **Subscriptions** - Use for real-time features (chat, notifications)

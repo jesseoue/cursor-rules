@@ -1,0 +1,327 @@
+---
+description: Resend email API for developers with React Email support
+globs: ["**/emails/**/*.{tsx,jsx}", "**/lib/resend*.{ts,js}", "**/lib/email*.{ts,js}"]
+alwaysApply: false
+---
+
+# Resend Email API Rules (2025)
+
+## What is Resend
+
+Resend is a modern email API built for developers. It provides a simple API to send emails with excellent deliverability, React Email support, and real-time analytics.
+
+### Key Features
+- **React Email Integration**: Design emails with React components
+- **High Deliverability**: Optimized for inbox placement
+- **Real-time Analytics**: Track opens, clicks, bounces
+- **Batch Sending**: Send multiple emails efficiently
+- **Webhooks**: Real-time event notifications
+- **Custom Domains**: Use your own domain for sending
+- **Templates**: Reusable email templates
+- **Attachments**: Send files with emails
+
+## Installation & Setup
+
+### Install Dependencies
+```bash
+npm install resend react-email @react-email/components
+```
+
+### Initialize Resend
+```typescript
+// lib/resend.ts
+import { Resend } from 'resend'
+
+export const resend = new Resend(process.env.RESEND_API_KEY)
+```
+
+### Environment Variables
+```bash
+# .env.local
+RESEND_API_KEY=re_xxxxxxxxxxxx
+RESEND_FROM_EMAIL=noreply@yourdomain.com
+```
+
+## React Email Templates
+
+### Welcome Email
+```typescript
+// emails/welcome.tsx
+import {
+  Body,
+  Button,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Link,
+  Preview,
+  Section,
+  Text,
+} from '@react-email/components'
+
+interface WelcomeEmailProps {
+  name: string
+  verificationUrl: string
+}
+
+export function WelcomeEmail({ name, verificationUrl }: WelcomeEmailProps) {
+  return (
+    <Html>
+      <Head />
+      <Preview>Welcome to our platform!</Preview>
+      <Body style={main}>
+        <Container style={container}>
+          <Heading style={h1}>Welcome, {name}!</Heading>
+          <Text style={text}>
+            Thanks for signing up. We're excited to have you on board.
+          </Text>
+          <Section style={buttonContainer}>
+            <Button style={button} href={verificationUrl}>
+              Verify your email
+            </Button>
+          </Section>
+          <Text style={text}>
+            Or copy and paste this link: {verificationUrl}
+          </Text>
+        </Container>
+      </Body>
+    </Html>
+  )
+}
+
+const main = {
+  backgroundColor: '#f6f9fc',
+  fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
+}
+
+const container = {
+  backgroundColor: '#ffffff',
+  margin: '0 auto',
+  padding: '20px 0 48px',
+  marginBottom: '64px',
+}
+
+const h1 = {
+  color: '#333',
+  fontSize: '24px',
+  fontWeight: 'bold',
+  margin: '40px 0',
+  padding: '0',
+}
+
+const text = {
+  color: '#333',
+  fontSize: '16px',
+  lineHeight: '26px',
+}
+
+const buttonContainer = {
+  padding: '27px 0',
+}
+
+const button = {
+  backgroundColor: '#5469d4',
+  borderRadius: '4px',
+  color: '#fff',
+  fontSize: '16px',
+  textDecoration: 'none',
+  textAlign: 'center' as const,
+  display: 'block',
+  padding: '12px',
+}
+```
+
+### Password Reset Email
+```typescript
+// emails/password-reset.tsx
+export function PasswordResetEmail({ name, resetUrl }: Props) {
+  return (
+    <Html>
+      <Head />
+      <Preview>Reset your password</Preview>
+      <Body style={main}>
+        <Container style={container}>
+          <Heading>Hi {name},</Heading>
+          <Text>
+            We received a request to reset your password. Click the button below to choose a new password.
+          </Text>
+          <Button href={resetUrl}>Reset Password</Button>
+          <Text>
+            This link will expire in 1 hour. If you didn't request this, you can safely ignore this email.
+          </Text>
+        </Container>
+      </Body>
+    </Html>
+  )
+}
+```
+
+## Sending Emails
+
+### Send Single Email
+```typescript
+import { resend } from '@/lib/resend'
+import { WelcomeEmail } from '@/emails/welcome'
+
+export async function sendWelcomeEmail(
+  to: string,
+  name: string,
+  verificationUrl: string
+) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'Acme <onboarding@resend.dev>',
+      to: [to],
+      subject: 'Welcome to Acme!',
+      react: WelcomeEmail({ name, verificationUrl }),
+    })
+
+    if (error) {
+      console.error('Failed to send email:', error)
+      throw new Error('Failed to send email')
+    }
+
+    return data
+  } catch (error) {
+    console.error('Error sending email:', error)
+    throw error
+  }
+}
+```
+
+### Send with Attachments
+```typescript
+export async function sendInvoiceEmail(
+  to: string,
+  invoicePdf: Buffer
+) {
+  const { data, error } = await resend.emails.send({
+    from: 'Billing <billing@yourdomain.com>',
+    to: [to],
+    subject: 'Your Invoice',
+    react: InvoiceEmail(),
+    attachments: [
+      {
+        filename: 'invoice.pdf',
+        content: invoicePdf,
+      },
+    ],
+  })
+
+  if (error) throw new Error(error.message)
+  return data
+}
+```
+
+### Batch Sending
+```typescript
+export async function sendBatchEmails(users: User[]) {
+  const emails = users.map((user) => ({
+    from: 'Newsletter <newsletter@yourdomain.com>',
+    to: [user.email],
+    subject: 'Monthly Update',
+    react: NewsletterEmail({ name: user.name }),
+  }))
+
+  const { data, error } = await resend.batch.send(emails)
+
+  if (error) throw new Error(error.message)
+  return data
+}
+```
+
+## Server Actions (Next.js)
+
+### Contact Form
+```typescript
+// app/actions/contact.ts
+'use server'
+
+import { resend } from '@/lib/resend'
+import { ContactEmail } from '@/emails/contact'
+import { z } from 'zod'
+
+const ContactSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  message: z.string().min(10),
+})
+
+export async function sendContactEmail(formData: FormData) {
+  const validated = ContactSchema.parse({
+    name: formData.get('name'),
+    email: formData.get('email'),
+    message: formData.get('message'),
+  })
+
+  const { error } = await resend.emails.send({
+    from: 'Contact Form <contact@yourdomain.com>',
+    to: ['support@yourdomain.com'],
+    replyTo: validated.email,
+    subject: `New message from ${validated.name}`,
+    react: ContactEmail(validated),
+  })
+
+  if (error) {
+    throw new Error('Failed to send message')
+  }
+
+  return { success: true }
+}
+```
+
+## Webhooks
+
+### Handle Email Events
+```typescript
+// app/api/webhooks/resend/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function POST(request: NextRequest) {
+  const payload = await request.json()
+
+  switch (payload.type) {
+    case 'email.sent':
+      console.log(`Email sent: ${payload.data.email_id}`)
+      break
+    case 'email.delivered':
+      console.log(`Email delivered: ${payload.data.email_id}`)
+      break
+    case 'email.opened':
+      console.log(`Email opened: ${payload.data.email_id}`)
+      break
+    case 'email.clicked':
+      console.log(`Link clicked: ${payload.data.click.link}`)
+      break
+    case 'email.bounced':
+      console.log(`Email bounced: ${payload.data.email_id}`)
+      // Handle bounce - maybe disable email sending
+      break
+    case 'email.complained':
+      console.log(`Spam complaint: ${payload.data.email_id}`)
+      // Handle complaint - unsubscribe user
+      break
+  }
+
+  return NextResponse.json({ received: true })
+}
+```
+
+## Best Practices
+
+1. **Use React Email** - Design emails with components, not HTML strings
+2. **Verify domain** - Set up SPF, DKIM, DMARC for better deliverability
+3. **Handle errors** - Always check for errors and log them
+4. **Batch for newsletters** - Use batch.send for multiple recipients
+5. **Include preview text** - Use Preview component for inbox preview
+6. **Unsubscribe links** - Include unsubscribe option in marketing emails
+7. **Test emails** - Send to yourself first to verify rendering
+8. **Track events** - Use webhooks for delivery status
+9. **Rate limiting** - Respect Resend's rate limits
+10. **Transactional vs marketing** - Use different senders
+11. **Reply-to address** - Set appropriate reply-to for responses
+12. **Mobile-friendly** - Design responsive email templates
+13. **Plain text fallback** - Include text version for accessibility
+14. **Personalization** - Use recipient data in templates
+15. **Error handling** - Gracefully handle send failures

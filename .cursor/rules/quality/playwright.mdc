@@ -1,0 +1,495 @@
+---
+description: Playwright E2E testing with AI agents, MCP support, and cross-browser automation
+globs: ["**/*.spec.{ts,js}", "**/e2e/**/*.{ts,js}", "playwright.config.*", "**/tests/**/*.{ts,js}"]
+alwaysApply: false
+---
+
+# Playwright E2E Testing Rules (2025)
+
+## What's New in Playwright (2025)
+
+### Latest Features
+- **AI-Powered Testing**: Playwright MCP (Model Context Protocol) with AI agents
+- **Playwright Agents**: Planner, Generator, and Healer agents for automated testing
+- **Auto-Generated Assertions**: Codegen creates toBeVisible() assertions automatically
+- **Enhanced Cross-Browser**: Latest Chromium, Firefox, WebKit support
+- **Performance Improvements**: Faster test execution and reduced resource consumption
+- **Network Mocking**: Advanced request interception and mocking
+- **Trace Viewer**: Enhanced debugging with timeline and screenshots
+- **Custom Reporters**: Integration with third-party tools
+- **Parallel Execution**: Multi-worker test parallelization
+- **Auto-Wait**: Elements wait to be actionable (eliminates flaky tests)
+
+## Installation & Setup
+
+### Install Playwright
+```bash
+npm init playwright@latest
+
+# Or add to existing project
+npm install -D @playwright/test
+npx playwright install
+```
+
+### Playwright Configuration
+```typescript
+// playwright.config.ts
+import { defineConfig, devices } from '@playwright/test'
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: [
+    ['html'],
+    ['json', { outputFile: 'test-results.json' }],
+    ['junit', { outputFile: 'test-results.xml' }],
+  ],
+  use: {
+    baseURL: 'http://localhost:3000',
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+  },
+
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
+      name: 'Mobile Chrome',
+      use: { ...devices['Pixel 5'] },
+    },
+    {
+      name: 'Mobile Safari',
+      use: { ...devices['iPhone 12'] },
+    },
+  ],
+
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+  },
+})
+```
+
+## AI-Powered Testing (2025)
+
+### Playwright MCP Integration
+```typescript
+import { test, expect } from '@playwright/test'
+
+test('AI-assisted form filling', async ({ page }) => {
+  await page.goto('/signup')
+
+  // Use AI agent to understand and fill form
+  // AI interprets plain English instructions
+  await page.evaluate(() => {
+    // MCP agent fills form based on context
+    window.playwrightMCP.fillForm({
+      instruction: 'fill this signup form with test data',
+      context: 'create a new user account',
+    })
+  })
+
+  await expect(page.locator('form')).toHaveValue('submitted')
+})
+```
+
+### Playwright Agents
+
+#### Planner Agent
+```typescript
+// Generates test plans in Markdown
+import { plannerAgent } from '@playwright/agents'
+
+const testPlan = await plannerAgent.explore('https://example.com', {
+  objective: 'Test user authentication flow',
+  depth: 3, // How deep to explore
+})
+
+// testPlan contains structured Markdown test plan
+```
+
+#### Generator Agent
+```typescript
+// Transforms plans into Playwright tests
+import { generatorAgent } from '@playwright/agents'
+
+const testCode = await generatorAgent.generate(testPlan, {
+  framework: 'playwright',
+  language: 'typescript',
+})
+
+// Auto-generated Playwright test code
+```
+
+#### Healer Agent
+```typescript
+// Automatically repairs failing tests
+import { healerAgent } from '@playwright/agents'
+
+test('login flow', async ({ page }) => {
+  // If test fails, healer agent auto-repairs
+  await healerAgent.enable()
+
+  await page.goto('/login')
+  await page.fill('[name="email"]', 'user@example.com')
+  await page.fill('[name="password"]', 'password123')
+  await page.click('button[type="submit"]')
+
+  await expect(page).toHaveURL('/dashboard')
+})
+```
+
+## Basic E2E Testing
+
+### Page Navigation and Interactions
+```typescript
+import { test, expect } from '@playwright/test'
+
+test('user can navigate and interact', async ({ page }) => {
+  // Navigate to page
+  await page.goto('/')
+
+  // Auto-wait for element to be actionable
+  await page.click('text=Get Started')
+
+  // Fill form fields
+  await page.fill('input[name="email"]', 'user@example.com')
+  await page.fill('input[name="password"]', 'SecurePass123!')
+
+  // Check checkbox
+  await page.check('input[type="checkbox"]')
+
+  // Select from dropdown
+  await page.selectOption('select[name="country"]', 'US')
+
+  // Submit form
+  await page.click('button[type="submit"]')
+
+  // Wait for navigation
+  await page.waitForURL('/dashboard')
+
+  // Assertions with auto-generated toBeVisible (2025 feature)
+  await expect(page.locator('h1')).toBeVisible()
+  await expect(page.locator('h1')).toContainText('Welcome')
+})
+```
+
+### Element Selectors
+```typescript
+test('various selector strategies', async ({ page }) => {
+  await page.goto('/products')
+
+  // Text selector
+  await page.click('text=Add to Cart')
+
+  // CSS selector
+  await page.click('.product-card button')
+
+  // Role-based (recommended)
+  await page.click('role=button[name="Buy Now"]')
+
+  // Data-testid
+  await page.click('[data-testid="checkout-button"]')
+
+  // XPath (avoid if possible)
+  await page.click('//button[contains(text(), "Submit")]')
+
+  // Chaining selectors
+  await page.locator('.product-card').locator('button').click()
+})
+```
+
+## Auto-Generated Assertions (2025)
+
+### Codegen with Auto-Assertions
+```bash
+# Run codegen with auto-assertion generation
+npx playwright codegen --target typescript \
+  --save-storage=auth.json \
+  --auto-assertions
+```
+
+```typescript
+// Auto-generated code with visibility assertions
+test('product page', async ({ page }) => {
+  await page.goto('/products/123')
+
+  // Auto-generated assertion
+  await expect(page.getByRole('heading', { name: 'Product Title' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Add to Cart' }).click()
+
+  // Auto-generated assertion
+  await expect(page.getByText('Added to cart')).toBeVisible()
+})
+```
+
+## Network Mocking
+
+### Intercept and Mock API Calls
+```typescript
+test('mock API responses', async ({ page }) => {
+  // Mock API endpoint
+  await page.route('**/api/users', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        { id: 1, name: 'Alice', email: 'alice@example.com' },
+        { id: 2, name: 'Bob', email: 'bob@example.com' },
+      ]),
+    })
+  })
+
+  await page.goto('/users')
+
+  await expect(page.locator('text=Alice')).toBeVisible()
+  await expect(page.locator('text=Bob')).toBeVisible()
+})
+```
+
+### Modify Requests
+```typescript
+test('modify outgoing requests', async ({ page }) => {
+  await page.route('**/api/**', async route => {
+    const headers = route.request().headers()
+    headers['Authorization'] = 'Bearer mock-token'
+
+    await route.continue({ headers })
+  })
+
+  await page.goto('/dashboard')
+})
+```
+
+### Abort Requests
+```typescript
+test('block unnecessary resources', async ({ page }) => {
+  // Block images and fonts for faster tests
+  await page.route('**/*.{png,jpg,jpeg,webp}', route => route.abort())
+  await page.route('**/*.{woff,woff2,ttf}', route => route.abort())
+
+  await page.goto('/')
+})
+```
+
+## Advanced Patterns
+
+### Authentication State Reuse
+```typescript
+// auth.setup.ts
+import { test as setup } from '@playwright/test'
+
+setup('authenticate', async ({ page }) => {
+  await page.goto('/login')
+  await page.fill('[name="email"]', 'user@example.com')
+  await page.fill('[name="password"]', 'password')
+  await page.click('button[type="submit"]')
+
+  await page.waitForURL('/dashboard')
+
+  // Save authenticated state
+  await page.context().storageState({ path: 'auth.json' })
+})
+
+// tests/dashboard.spec.ts
+import { test } from '@playwright/test'
+
+test.use({ storageState: 'auth.json' })
+
+test('dashboard loads for authenticated user', async ({ page }) => {
+  await page.goto('/dashboard')
+  // Already authenticated!
+})
+```
+
+### Page Object Model
+```typescript
+// pages/LoginPage.ts
+export class LoginPage {
+  constructor(private page: Page) {}
+
+  async goto() {
+    await this.page.goto('/login')
+  }
+
+  async login(email: string, password: string) {
+    await this.page.fill('[name="email"]', email)
+    await this.page.fill('[name="password"]', password)
+    await this.page.click('button[type="submit"]')
+  }
+
+  async getErrorMessage() {
+    return await this.page.locator('.error-message').textContent()
+  }
+}
+
+// tests/login.spec.ts
+import { LoginPage } from '../pages/LoginPage'
+
+test('failed login shows error', async ({ page }) => {
+  const loginPage = new LoginPage(page)
+
+  await loginPage.goto()
+  await loginPage.login('wrong@example.com', 'wrongpass')
+
+  const error = await loginPage.getErrorMessage()
+  expect(error).toContain('Invalid credentials')
+})
+```
+
+### Fixtures for Reusable Setup
+```typescript
+// fixtures.ts
+import { test as base } from '@playwright/test'
+
+type MyFixtures = {
+  authenticatedPage: Page
+  adminPage: Page
+}
+
+export const test = base.extend<MyFixtures>({
+  authenticatedPage: async ({ page }, use) => {
+    await page.goto('/login')
+    await page.fill('[name="email"]', 'user@example.com')
+    await page.fill('[name="password"]', 'password')
+    await page.click('button[type="submit"]')
+    await page.waitForURL('/dashboard')
+    await use(page)
+  },
+
+  adminPage: async ({ page }, use) => {
+    await page.goto('/login')
+    await page.fill('[name="email"]', 'admin@example.com')
+    await page.fill('[name="password"]', 'admin')
+    await page.click('button[type="submit"]')
+    await page.waitForURL('/admin')
+    await use(page)
+  },
+})
+
+// Use in tests
+test('user dashboard', async ({ authenticatedPage }) => {
+  await expect(authenticatedPage.locator('h1')).toContainText('Dashboard')
+})
+```
+
+## Debugging
+
+### Trace Viewer
+```typescript
+// playwright.config.ts
+export default defineConfig({
+  use: {
+    trace: 'on', // or 'on-first-retry', 'retain-on-failure'
+  },
+})
+
+// View traces
+// npx playwright show-trace trace.zip
+```
+
+### Debug Mode
+```bash
+# Run in headed mode with slow motion
+npx playwright test --headed --slow-mo=1000
+
+# Debug specific test
+npx playwright test --debug
+
+# Use inspector
+PWDEBUG=1 npx playwright test
+```
+
+### Screenshots and Videos
+```typescript
+test('capture evidence', async ({ page }) => {
+  await page.goto('/products')
+
+  // Manual screenshot
+  await page.screenshot({ path: 'products.png', fullPage: true })
+
+  // Element screenshot
+  const element = page.locator('.product-card')
+  await element.screenshot({ path: 'product-card.png' })
+})
+```
+
+## Parallel Execution
+
+### Parallel Workers
+```typescript
+// playwright.config.ts
+export default defineConfig({
+  workers: process.env.CI ? 1 : 4, // 4 parallel workers locally
+  fullyParallel: true,
+})
+```
+
+### Serial Tests
+```typescript
+// Run tests in series when needed
+test.describe.serial('checkout flow', () => {
+  test('add to cart', async ({ page }) => {
+    // Test 1
+  })
+
+  test('proceed to checkout', async ({ page }) => {
+    // Test 2 (runs after test 1)
+  })
+
+  test('complete payment', async ({ page }) => {
+    // Test 3 (runs after test 2)
+  })
+})
+```
+
+## Visual Regression Testing
+
+### Screenshot Comparison
+```typescript
+test('visual regression', async ({ page }) => {
+  await page.goto('/homepage')
+
+  // Compare with baseline screenshot
+  await expect(page).toHaveScreenshot('homepage.png', {
+    maxDiffPixels: 100,
+  })
+})
+
+// Update baselines
+// npx playwright test --update-snapshots
+```
+
+## Best Practices (2025)
+
+1. **Use AI agents for exploration** - Let Planner agent discover test scenarios
+2. **Auto-generate assertions** - Enable in Codegen for toBeVisible() checks
+3. **Leverage healer agent** - Auto-repair flaky tests
+4. **Use role-based selectors** - More maintainable than CSS selectors
+5. **Reuse authentication state** - Don't login in every test
+6. **Mock external APIs** - Fast, reliable, isolated tests
+7. **Enable trace on failures** - Easy debugging with Trace Viewer
+8. **Parallel execution** - Faster test suite completion
+9. **Block unnecessary resources** - Images, fonts for speed
+10. **Page Object Model** - Encapsulate page interactions
+11. **Auto-wait is built-in** - No manual waits needed
+12. **Test across browsers** - Use project configuration
+13. **Visual regression** - Catch UI changes
+14. **CI integration** - Use reporters (HTML, JSON, JUnit)
+15. **Keep tests independent** - Each test should work in isolation

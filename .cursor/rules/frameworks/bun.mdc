@@ -1,0 +1,550 @@
+---
+description: Bun 1.3+ - Fast all-in-one JavaScript runtime, package manager, test runner, and bundler
+globs: ["bun.lockb", "bunfig.toml", "**/bun/**/*.{ts,js}", "**/test/**/*.test.{ts,js}"]
+alwaysApply: false
+---
+
+# Bun Runtime Rules (v1.3+ - 2025)
+
+## What is Bun
+
+Bun is an all-in-one toolkit for JavaScript and TypeScript apps that ships as a single executable, featuring a blazing-fast runtime, package manager, test runner, and bundler.
+
+### Key Features
+- **Fast Runtime**: Drop-in replacement for Node.js, built with Zig and JavaScriptCore
+- **Package Manager**: 7× faster than npm, ~4× faster than pnpm
+- **Test Runner**: Built-in test runner with Jest-compatible API
+- **Bundler**: Native bundler for production builds
+- **TypeScript Native**: Run TypeScript files directly, no compilation needed
+- **Web Standard APIs**: Fetch, WebSocket, ReadableStream, and more
+- **Built-in APIs**: Bun.serve, Bun.file, Bun.write, Bun.SQL
+
+## Installation & Setup
+
+### Install Bun
+```bash
+# macOS, Linux, WSL
+curl -fsSL https://bun.sh/install | bash
+
+# Windows
+powershell -c "irm bun.sh/install.ps1|iex"
+
+# Upgrade Bun
+bun upgrade
+
+# Check version
+bun --version
+```
+
+### Initialize Project
+```bash
+# Create new project
+bun init
+
+# Install dependencies
+bun install
+
+# Run file
+bun run index.ts
+```
+
+## Package Manager (7× Faster)
+
+### Installation Commands
+```bash
+# Install all dependencies
+bun install
+
+# Install specific package
+bun add react
+bun add -d typescript
+bun add -D @types/react
+
+# Install exact version
+bun add react@18.2.0
+
+# Global install
+bun add -g typescript
+
+# Remove package
+bun remove react
+
+# Update packages
+bun update
+
+# Interactive update (v1.2+)
+bun update --interactive
+```
+
+### Workspaces
+```json
+// package.json
+{
+  "name": "my-monorepo",
+  "workspaces": ["packages/*", "apps/*"],
+  "dependencies": {
+    "react": "^19.0.0"
+  }
+}
+```
+
+```bash
+# Install all workspace dependencies in one pass
+bun install
+
+# Run command in workspace
+bun --filter my-app dev
+bun --filter @org/package build
+```
+
+### bun.lockb
+```bash
+# Bun uses binary lockfile for faster parsing
+# Convert to text-based (v1.2+)
+bun install --yarn
+
+# Use text-based bun.lock (default in v1.2+)
+# Automatically generated on bun install
+```
+
+## Runtime Features
+
+### Run TypeScript Directly
+```typescript
+// index.ts - No compilation needed!
+import { serve } from 'bun'
+
+const server = serve({
+  port: 3000,
+  fetch(req) {
+    return new Response('Hello from Bun!')
+  },
+})
+
+console.log(`Listening on http://localhost:${server.port}`)
+```
+
+```bash
+# Run directly
+bun run index.ts
+# or just
+bun index.ts
+```
+
+### Environment Variables
+```bash
+# .env.local
+DATABASE_URL=postgresql://localhost/db
+API_KEY=secret123
+```
+
+```typescript
+// Automatic .env loading
+console.log(process.env.DATABASE_URL)
+console.log(Bun.env.API_KEY) // Bun-specific
+```
+
+## HTTP Server (Bun.serve)
+
+### Basic Server
+```typescript
+import { serve } from 'bun'
+
+const server = serve({
+  port: 3000,
+  fetch(req) {
+    const url = new URL(req.url)
+
+    if (url.pathname === '/') {
+      return new Response('Home page')
+    }
+
+    if (url.pathname === '/api/users') {
+      return Response.json({ users: ['Alice', 'Bob'] })
+    }
+
+    return new Response('Not found', { status: 404 })
+  },
+})
+
+console.log(`Server running on ${server.url}`)
+```
+
+### Built-in Routing (v1.3+)
+```typescript
+import { serve } from 'bun'
+
+serve({
+  port: 3000,
+
+  // Built-in routing
+  routes: {
+    '/': (req) => new Response('Home'),
+
+    '/api/users': (req) => {
+      return Response.json({ users: [] })
+    },
+
+    '/api/users/:id': (req, { params }) => {
+      return Response.json({ id: params.id })
+    },
+
+    // Static files with automatic ETag
+    '/public/*': {
+      static: './public',
+    },
+  },
+})
+```
+
+### Cookie Support (Built-in v1.3+)
+```typescript
+import { serve } from 'bun'
+
+serve({
+  port: 3000,
+  fetch(req) {
+    // Read cookies (Map-like API)
+    const sessionId = req.cookies.get('sessionId')
+
+    const response = new Response('Welcome!')
+
+    // Set cookies (automatically adds Set-Cookie header)
+    response.cookies.set('sessionId', 'abc123', {
+      httpOnly: true,
+      secure: true,
+      maxAge: 3600,
+      sameSite: 'strict',
+    })
+
+    return response
+  },
+})
+```
+
+### WebSocket with Compression (permessage-deflate)
+```typescript
+import { serve } from 'bun'
+
+serve({
+  port: 3000,
+  fetch(req, server) {
+    if (server.upgrade(req)) {
+      return // WebSocket upgrade
+    }
+    return new Response('HTTP response')
+  },
+
+  websocket: {
+    // permessage-deflate compression (60-80% size reduction)
+    perMessageDeflate: true,
+
+    message(ws, message) {
+      console.log('Received:', message)
+      ws.send(`Echo: ${message}`)
+    },
+
+    open(ws) {
+      console.log('Client connected')
+      ws.subscribe('chat-room')
+    },
+
+    close(ws) {
+      console.log('Client disconnected')
+    },
+  },
+})
+```
+
+## File System (Bun.file)
+
+### Reading Files
+```typescript
+// Read file as text
+const file = Bun.file('data.txt')
+const text = await file.text()
+
+// Read as JSON
+const config = await Bun.file('config.json').json()
+
+// Read as ArrayBuffer
+const buffer = await Bun.file('image.png').arrayBuffer()
+
+// Stream large files
+const file = Bun.file('large.csv')
+const stream = file.stream()
+
+// Check if file exists
+const exists = await Bun.file('data.txt').exists()
+
+// Get file size
+const size = Bun.file('data.txt').size
+```
+
+### Writing Files
+```typescript
+// Write text
+await Bun.write('output.txt', 'Hello, Bun!')
+
+// Write JSON
+await Bun.write('data.json', JSON.stringify({ name: 'Alice' }))
+
+// Write from Response
+const response = await fetch('https://example.com/image.png')
+await Bun.write('image.png', response)
+
+// Write with Bun.file()
+const file = Bun.file('output.txt')
+await Bun.write(file, 'Content')
+
+// Append to file
+await Bun.write('log.txt', 'New entry\n', { flags: 'a' })
+```
+
+### File Operations
+```typescript
+// Delete file (v1.3+)
+await Bun.file('temp.txt').delete()
+// or
+await Bun.file('temp.txt').unlink()
+
+// Get file metadata
+const stats = await Bun.file('data.txt').stat()
+console.log(stats.size, stats.mtime)
+```
+
+## Database (Bun.SQL - v1.3+)
+
+### SQLite
+```typescript
+import { Database } from 'bun:sqlite'
+
+const db = new Database('mydb.sqlite')
+
+// Create table
+db.run(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    email TEXT UNIQUE
+  )
+`)
+
+// Insert
+const insert = db.prepare('INSERT INTO users (name, email) VALUES (?, ?)')
+insert.run('Alice', 'alice@example.com')
+
+// Query
+const query = db.prepare('SELECT * FROM users WHERE name = ?')
+const user = query.get('Alice')
+
+// Query all
+const users = db.prepare('SELECT * FROM users').all()
+
+// Transaction
+db.transaction(() => {
+  insert.run('Bob', 'bob@example.com')
+  insert.run('Charlie', 'charlie@example.com')
+})()
+```
+
+### PostgreSQL/MySQL (Bun.SQL API - v1.3+)
+```typescript
+import { SQL } from 'bun'
+
+// PostgreSQL
+const db = await SQL.connect('postgresql://user:pass@localhost/db')
+
+// MySQL
+const db = await SQL.connect('mysql://user:pass@localhost/db')
+
+// Query
+const users = await db.query('SELECT * FROM users WHERE active = $1', [true])
+
+// Insert
+await db.query(
+  'INSERT INTO users (name, email) VALUES ($1, $2)',
+  ['Alice', 'alice@example.com']
+)
+
+// Prepared statements
+const stmt = await db.prepare('SELECT * FROM users WHERE id = $1')
+const user = await stmt.get(123)
+```
+
+## Password Hashing (Bun.password)
+
+```typescript
+// Hash password (uses Argon2 by default)
+const hash = await Bun.password.hash('mypassword123')
+
+// Verify password
+const isValid = await Bun.password.verify('mypassword123', hash)
+
+// Custom options
+const hash = await Bun.password.hash('mypassword123', {
+  algorithm: 'argon2id', // or 'bcrypt'
+  memoryCost: 19456,
+  timeCost: 2,
+})
+```
+
+## Test Runner (Built-in)
+
+### Basic Testing
+```typescript
+// math.test.ts
+import { expect, test, describe } from 'bun:test'
+import { add, multiply } from './math'
+
+describe('Math functions', () => {
+  test('add two numbers', () => {
+    expect(add(2, 3)).toBe(5)
+  })
+
+  test('multiply two numbers', () => {
+    expect(multiply(2, 3)).toBe(6)
+  })
+})
+```
+
+```bash
+# Run tests
+bun test
+
+# Watch mode
+bun test --watch
+
+# Run specific file
+bun test math.test.ts
+
+# Coverage
+bun test --coverage
+```
+
+### Async Testing
+```typescript
+import { expect, test } from 'bun:test'
+
+test('async operation', async () => {
+  const result = await fetchData()
+  expect(result).toBeDefined()
+})
+
+test('promise resolves', async () => {
+  await expect(Promise.resolve('data')).resolves.toBe('data')
+})
+
+test('promise rejects', async () => {
+  await expect(Promise.reject('error')).rejects.toBe('error')
+})
+```
+
+### Mocking
+```typescript
+import { mock, spyOn } from 'bun:test'
+
+test('mock function', () => {
+  const mockFn = mock((x: number) => x * 2)
+
+  mockFn(5)
+
+  expect(mockFn).toHaveBeenCalledWith(5)
+  expect(mockFn).toHaveBeenCalledTimes(1)
+})
+
+test('spy on object method', () => {
+  const obj = { getValue: () => 42 }
+  const spy = spyOn(obj, 'getValue')
+
+  obj.getValue()
+
+  expect(spy).toHaveBeenCalled()
+})
+```
+
+## Bundler
+
+### Build for Production
+```bash
+# Bundle for browser
+bun build ./index.ts --outdir ./dist
+
+# Minify
+bun build ./index.ts --outfile ./dist/app.js --minify
+
+# Multiple entry points
+bun build ./src/index.ts ./src/worker.ts --outdir ./dist
+
+# Splitting
+bun build ./index.ts --outdir ./dist --splitting
+
+# Target
+bun build ./index.ts --outdir ./dist --target browser
+bun build ./index.ts --outdir ./dist --target node
+```
+
+### Configuration
+```typescript
+// build.ts
+await Bun.build({
+  entrypoints: ['./src/index.ts'],
+  outdir: './dist',
+  target: 'browser',
+  minify: true,
+  splitting: true,
+  sourcemap: 'external',
+})
+```
+
+## YAML Support (Native - v1.3+)
+
+```typescript
+import { parse, stringify } from 'bun:yaml'
+
+// Parse YAML
+const config = parse(`
+  name: My App
+  version: 1.0.0
+  features:
+    - auth
+    - api
+`)
+
+// Stringify to YAML
+const yaml = stringify({
+  name: 'My App',
+  version: '1.0.0',
+})
+```
+
+## Performance Tips
+
+1. **Use Bun.file** - Faster than Node.js fs module
+2. **Leverage built-in APIs** - Bun.serve, Bun.write are highly optimized
+3. **TypeScript directly** - No need for tsc or ts-node
+4. **Fast package installs** - 7× faster than npm
+5. **WebSocket compression** - Enable perMessageDeflate for 60-80% size reduction
+6. **Binary lockfile** - Faster parsing than text lockfiles
+7. **Built-in test runner** - Faster than Jest or Vitest
+8. **Native bundler** - Use instead of esbuild or webpack
+9. **SQLite built-in** - No need for external dependencies
+10. **Hot reloading** - Use bun --hot for development
+
+## Best Practices
+
+1. **Replace Node.js gradually** - Bun is a drop-in replacement
+2. **Use bun:* imports** - Access native APIs (bun:test, bun:sqlite)
+3. **Leverage workspaces** - Fast monorepo support
+4. **Use Bun.serve** - Faster than Express or Fastify
+5. **Native TypeScript** - No build step needed
+6. **File operations** - Prefer Bun.file over fs
+7. **Environment variables** - Use Bun.env or process.env
+8. **Testing** - Built-in test runner is fast and compatible with Jest
+9. **Bundling** - Use Bun.build for production
+10. **Database** - Use built-in SQLite or Bun.SQL for PostgreSQL/MySQL
+11. **Password hashing** - Use Bun.password with Argon2
+12. **YAML parsing** - Use native bun:yaml
+13. **WebSockets** - Enable compression for better performance
+14. **Static files** - Use built-in routing with automatic ETag
+15. **Windows support** - Fully supported since v1.1

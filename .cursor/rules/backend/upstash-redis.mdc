@@ -1,0 +1,327 @@
+---
+description: Upstash Redis serverless data store with edge compatibility
+globs: ["**/lib/redis*.{ts,js}", "**/lib/upstash*.{ts,js}", "**/lib/cache*.{ts,js}"]
+alwaysApply: false
+---
+
+# Upstash Redis Rules (2025)
+
+## What is Upstash Redis
+
+Upstash is a serverless Redis database designed for edge computing, with per-request pricing and global replication.
+
+### Key Features
+- **Serverless**: Pay per request, no connection limits
+- **Edge Compatible**: Works with Vercel Edge, Cloudflare Workers
+- **Global Replication**: Low latency worldwide
+- **HTTP API**: REST API for maximum compatibility
+- **Rate Limiting**: Built-in rate limiter
+- **Durable**: Automatic backups and persistence
+
+## Installation & Setup
+
+### Install Upstash Redis
+```bash
+npm install @upstash/redis
+```
+
+### Environment Variables
+```bash
+# .env.local
+UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+UPSTASH_REDIS_REST_TOKEN=AXXXxxx
+```
+
+### Initialize Redis Client
+```typescript
+// lib/redis.ts
+import { Redis } from '@upstash/redis'
+
+export const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+})
+```
+
+## Basic Operations
+
+### String Operations
+```typescript
+// Set value
+await redis.set('user:123', { name: 'Alice', email: 'alice@example.com' })
+
+// Set with expiration (EX in seconds)
+await redis.set('session:abc', userData, { ex: 3600 })
+
+// Get value
+const user = await redis.get('user:123')
+
+// Delete value
+await redis.del('user:123')
+
+// Check if exists
+const exists = await redis.exists('user:123')
+
+// Increment
+await redis.incr('page:views')
+await redis.incrby('counter', 5)
+```
+
+### Hash Operations
+```typescript
+// Set hash field
+await redis.hset('user:123', { name: 'Alice', age: 30 })
+
+// Get hash field
+const name = await redis.hget('user:123', 'name')
+
+// Get all fields
+const user = await redis.hgetall('user:123')
+
+// Delete field
+await redis.hdel('user:123', 'age')
+
+// Increment hash field
+await redis.hincrby('stats:today', 'visits', 1)
+```
+
+### List Operations
+```typescript
+// Push to list
+await redis.lpush('queue:jobs', job1, job2)
+await redis.rpush('recent:posts', postId)
+
+// Pop from list
+const job = await redis.lpop('queue:jobs')
+const post = await redis.rpop('recent:posts')
+
+// Get range
+const posts = await redis.lrange('recent:posts', 0, 9) // First 10
+
+// Get length
+const length = await redis.llen('queue:jobs')
+```
+
+### Set Operations
+```typescript
+// Add members
+await redis.sadd('tags:post:123', 'typescript', 'react', 'nextjs')
+
+// Get all members
+const tags = await redis.smembers('tags:post:123')
+
+// Check membership
+const isMember = await redis.sismember('tags:post:123', 'react')
+
+// Remove member
+await redis.srem('tags:post:123', 'react')
+
+// Set operations
+const common = await redis.sinter('tags:post:1', 'tags:post:2')
+const all = await redis.sunion('tags:post:1', 'tags:post:2')
+```
+
+### Sorted Sets
+```typescript
+// Add with score
+await redis.zadd('leaderboard', { score: 100, member: 'user1' })
+await redis.zadd('leaderboard', { score: 85, member: 'user2' })
+
+// Get by rank
+const top10 = await redis.zrange('leaderboard', 0, 9, { rev: true })
+
+// Get by score
+const topScorers = await redis.zrangebyscore('leaderboard', 90, 100)
+
+// Increment score
+await redis.zincrby('leaderboard', 10, 'user1')
+
+// Get rank
+const rank = await redis.zrank('leaderboard', 'user1')
+```
+
+## Caching Patterns
+
+### Cache Aside
+```typescript
+export async function getUser(id: string) {
+  // Try cache first
+  const cached = await redis.get(`user:${id}`)
+  if (cached) return cached
+
+  // Fetch from database
+  const user = await db.user.findUnique({
+    where: { id },
+    omit: { password: true },
+  })
+
+  // Cache for 1 hour
+  if (user) {
+    await redis.set(`user:${id}`, user, { ex: 3600 })
+  }
+
+  return user
+}
+```
+
+### Write-Through Cache
+```typescript
+export async function updateUser(id: string, data: Partial<User>) {
+  // Update database
+  const user = await db.user.update({
+    where: { id },
+    data,
+    omit: { password: true },
+  })
+
+  // Update cache
+  await redis.set(`user:${id}`, user, { ex: 3600 })
+
+  return user
+}
+```
+
+### Cache Invalidation
+```typescript
+export async function deleteUser(id: string) {
+  // Delete from database
+  await db.user.delete({ where: { id } })
+
+  // Invalidate cache
+  await redis.del(`user:${id}`)
+
+  // Invalidate related caches
+  await redis.del(`user:${id}:posts`)
+  await redis.del(`user:${id}:profile`)
+}
+```
+
+## Rate Limiting
+
+### Using @upstash/ratelimit
+```bash
+npm install @upstash/ratelimit
+```
+
+```typescript
+// lib/ratelimit.ts
+import { Ratelimit } from '@upstash/ratelimit'
+import { redis } from './redis'
+
+// Fixed window: 10 requests per 10 seconds
+export const ratelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.fixedWindow(10, '10 s'),
+  analytics: true,
+})
+
+// Sliding window: 100 requests per hour
+export const apiRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(100, '1 h'),
+})
+
+// Token bucket: burst of 20, refill 1 per second
+export const burstRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.tokenBucket(1, '1 s', 20),
+})
+```
+
+### Apply Rate Limiting
+```typescript
+// app/api/data/route.ts
+import { ratelimit } from '@/lib/ratelimit'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const ip = request.ip ?? '127.0.0.1'
+
+  const { success, limit, reset, remaining } = await ratelimit.limit(ip)
+
+  if (!success) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded' },
+      {
+        status: 429,
+        headers: {
+          'X-RateLimit-Limit': limit.toString(),
+          'X-RateLimit-Remaining': remaining.toString(),
+          'X-RateLimit-Reset': reset.toString(),
+        },
+      }
+    )
+  }
+
+  // Process request
+  const data = await fetchData()
+
+  return NextResponse.json(data, {
+    headers: {
+      'X-RateLimit-Limit': limit.toString(),
+      'X-RateLimit-Remaining': remaining.toString(),
+      'X-RateLimit-Reset': reset.toString(),
+    },
+  })
+}
+```
+
+## Session Management
+
+### Store Sessions
+```typescript
+export async function createSession(userId: string) {
+  const sessionId = crypto.randomUUID()
+
+  await redis.set(
+    `session:${sessionId}`,
+    { userId, createdAt: Date.now() },
+    { ex: 86400 } // 24 hours
+  )
+
+  return sessionId
+}
+
+export async function getSession(sessionId: string) {
+  return await redis.get(`session:${sessionId}`)
+}
+
+export async function deleteSession(sessionId: string) {
+  await redis.del(`session:${sessionId}`)
+}
+```
+
+## Pub/Sub (Real-time)
+
+### Publisher
+```typescript
+await redis.publish('notifications', {
+  type: 'new_message',
+  userId: '123',
+  message: 'Hello!',
+})
+```
+
+### Subscriber (Long-running process)
+```typescript
+// Note: Use in background jobs, not serverless functions
+const subscriber = redis.duplicate()
+
+await subscriber.subscribe('notifications', (message) => {
+  console.log('Received:', message)
+  // Handle notification
+})
+```
+
+## Best Practices
+
+1. **Use appropriate data structures** - Choose the right Redis type
+2. **Set expiration times** - Prevent unbounded growth
+3. **Batch operations** - Use pipelines for multiple operations
+4. **Rate limit APIs** - Protect against abuse
+5. **Cache invalidation strategy** - Keep cache fresh
+6. **Monitor usage** - Track request counts in Upstash dashboard
+7. **Error handling** - Handle Redis errors gracefully
+8. **Connection reuse** - Reuse Redis client instance
+9. **Edge compatibility** - Works in Edge Runtime
+10. **Global replication** - Use for low latency worldwide

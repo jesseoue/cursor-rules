@@ -1,0 +1,354 @@
+---
+description: Vitest 4.0 testing framework with visual regression, browser mode, and enhanced reporting
+globs: ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}", "vitest.config.*", "**/test/**/*.{ts,tsx}"]
+alwaysApply: false
+---
+
+# Vitest Testing Rules (v4.0 - 2025)
+
+## What's New in Vitest 4.0 (October 2025)
+
+### Latest Features
+- **Visual Regression Testing**: toMatchScreenshot assertion in Browser Mode
+- **Enhanced Browser Testing**: Debug Test button in VS Code, --inspect flag support
+- **Viewport Matcher**: toBeInViewport matcher with IntersectionObserver API
+- **Playwright/WebDriverIO Integration**: Full debugging support
+- **Improved Performance**: Single Vite server for multiple browser instances
+- **Line Number Filtering**: Filter tests by line number
+- **Redesigned Public API**: Better vitest/node API with comprehensive docs
+
+## Installation & Setup
+
+### Basic Setup
+```bash
+npm install -D vitest @vitest/ui
+```
+
+### Vitest Configuration
+```typescript
+// vitest.config.ts
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    css: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'src/test/',
+      ],
+    },
+  },
+})
+```
+
+## Visual Regression Testing (v4.0)
+
+### Screenshot Testing
+```typescript
+import { test, expect } from 'vitest'
+import { render } from '@testing-library/react'
+
+test('button renders correctly', async () => {
+  const { container } = render(<Button>Click me</Button>)
+
+  // Visual regression testing
+  await expect(container).toMatchScreenshot('button-default.png')
+})
+
+test('button in hover state', async () => {
+  const { container } = render(<Button>Click me</Button>)
+
+  // Simulate hover and capture
+  const button = container.querySelector('button')
+  button?.classList.add('hover')
+
+  await expect(container).toMatchScreenshot('button-hover.png')
+})
+```
+
+### Snapshot Options
+```typescript
+test('with custom snapshot options', async () => {
+  const { container } = render(<ComplexComponent />)
+
+  await expect(container).toMatchScreenshot('complex.png', {
+    threshold: 0.2, // Allow 20% difference
+    maxDiffPixels: 100, // Max 100 different pixels
+  })
+})
+```
+
+## Browser Mode Testing
+
+### Browser Configuration
+```typescript
+// vitest.config.ts
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    browser: {
+      enabled: true,
+      name: 'chromium', // or 'firefox', 'webkit'
+      provider: 'playwright', // or 'webdriverio'
+      headless: true,
+      screenshotFailures: true,
+    },
+  },
+})
+```
+
+### Multiple Browser Testing (v3.0+)
+```typescript
+// vitest.config.ts
+export default defineConfig({
+  test: {
+    browser: {
+      enabled: true,
+      instances: [
+        { browser: 'chromium' },
+        { browser: 'firefox' },
+        { browser: 'webkit' },
+      ],
+      provider: 'playwright',
+    },
+  },
+})
+```
+
+### Browser-Specific Tests
+```typescript
+import { test, expect, page } from '@vitest/browser/context'
+
+test('interactive component test', async () => {
+  const { getByRole } = render(<Counter />)
+
+  const button = getByRole('button', { name: /increment/i })
+  await button.click()
+
+  const count = getByRole('heading', { name: /count/i })
+  expect(count).toHaveTextContent('Count: 1')
+})
+
+test('viewport detection', async () => {
+  const { container } = render(<ScrollableComponent />)
+  const element = container.querySelector('.target')
+
+  // New v4.0 matcher
+  expect(element).toBeInViewport()
+})
+```
+
+## Unit Testing Patterns
+
+### Component Testing
+```typescript
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { UserProfile } from './UserProfile'
+
+describe('UserProfile', () => {
+  it('renders user information', () => {
+    const user = { name: 'Alice', email: 'alice@example.com' }
+    render(<UserProfile user={user} />)
+
+    expect(screen.getByText('Alice')).toBeInTheDocument()
+    expect(screen.getByText('alice@example.com')).toBeInTheDocument()
+  })
+
+  it('handles loading state', () => {
+    render(<UserProfile user={null} loading={true} />)
+    expect(screen.getByRole('status')).toBeInTheDocument()
+  })
+
+  it('calls onEdit when edit button clicked', async () => {
+    const onEdit = vi.fn()
+    const user = { name: 'Alice', email: 'alice@example.com' }
+
+    render(<UserProfile user={user} onEdit={onEdit} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+    await waitFor(() => {
+      expect(onEdit).toHaveBeenCalledWith(user)
+    })
+  })
+})
+```
+
+### Hook Testing
+```typescript
+import { renderHook, act } from '@testing-library/react'
+import { useCounter } from './useCounter'
+
+describe('useCounter', () => {
+  it('initializes with default value', () => {
+    const { result } = renderHook(() => useCounter())
+    expect(result.current.count).toBe(0)
+  })
+
+  it('increments counter', () => {
+    const { result } = renderHook(() => useCounter())
+
+    act(() => {
+      result.current.increment()
+    })
+
+    expect(result.current.count).toBe(1)
+  })
+
+  it('accepts initial value', () => {
+    const { result } = renderHook(() => useCounter(10))
+    expect(result.current.count).toBe(10)
+  })
+})
+```
+
+## Mocking
+
+### Function Mocking
+```typescript
+import { vi } from 'vitest'
+
+describe('API calls', () => {
+  it('fetches user data', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      json: async () => ({ name: 'Alice' }),
+    })
+
+    global.fetch = mockFetch
+
+    const result = await fetchUser('123')
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/users/123')
+    expect(result.name).toBe('Alice')
+  })
+})
+```
+
+### Module Mocking
+```typescript
+import { vi } from 'vitest'
+
+// Mock entire module
+vi.mock('./api', () => ({
+  fetchUser: vi.fn(() => Promise.resolve({ name: 'Alice' })),
+  createUser: vi.fn(),
+}))
+
+// Partial mock
+vi.mock('./utils', async () => {
+  const actual = await vi.importActual('./utils')
+  return {
+    ...actual,
+    generateId: vi.fn(() => 'mock-id'),
+  }
+})
+```
+
+## Async Testing
+
+### Promises and Async/Await
+```typescript
+describe('async operations', () => {
+  it('resolves with data', async () => {
+    const data = await fetchData()
+    expect(data).toEqual({ status: 'success' })
+  })
+
+  it('rejects with error', async () => {
+    await expect(fetchInvalidData()).rejects.toThrow('Not found')
+  })
+
+  it('waits for async state update', async () => {
+    render(<AsyncComponent />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Loaded')).toBeInTheDocument()
+    }, { timeout: 3000 })
+  })
+})
+```
+
+## Debugging Tests
+
+### Debug in VS Code (v4.0)
+```typescript
+// Use the "Debug Test" button in VS Code
+
+// Or run with --inspect flag
+// npm run test -- --inspect
+
+test('debug this test', async () => {
+  debugger // Breakpoint will pause here
+  const result = await someAsyncOperation()
+  expect(result).toBe(expected)
+})
+```
+
+### Line Number Filtering (v3.0+)
+```bash
+# Run tests at specific line numbers
+npm run test -- path/to/file.test.ts:42
+npm run test -- path/to/file.test.ts:42,56,78
+```
+
+## Coverage
+
+### Coverage Configuration
+```typescript
+// vitest.config.ts
+export default defineConfig({
+  test: {
+    coverage: {
+      provider: 'v8', // or 'istanbul'
+      reporter: ['text', 'json', 'html', 'lcov'],
+      reportsDirectory: './coverage',
+      exclude: [
+        'node_modules/',
+        'test/',
+        '**/*.d.ts',
+        '**/*.config.*',
+        '**/mockData',
+      ],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
+      },
+    },
+  },
+})
+```
+
+### Run with Coverage
+```bash
+npm run test -- --coverage
+```
+
+## Best Practices
+
+1. **Use Browser Mode for UI tests** - Better than jsdom for complex interactions
+2. **Visual regression for UI changes** - Catch unintended visual changes
+3. **Test user behavior, not implementation** - Use @testing-library patterns
+4. **Mock external dependencies** - Keep tests fast and isolated
+5. **Use describe blocks** - Group related tests logically
+6. **Name tests clearly** - Describe what the test validates
+7. **Test edge cases** - Empty states, errors, loading states
+8. **Keep tests fast** - Avoid unnecessary waits
+9. **Use snapshots sparingly** - Visual regression is better for UI
+10. **Debug with --inspect** - Use browser DevTools for complex issues
+11. **Filter by line number** - Quick iteration on specific tests
+12. **Maintain high coverage** - Use coverage thresholds
+13. **Test accessibility** - Use toBeInViewport and ARIA matchers
+14. **Leverage multiple browsers** - Test cross-browser compatibility
+15. **Use globals wisely** - Enable globals for describe/it/expect

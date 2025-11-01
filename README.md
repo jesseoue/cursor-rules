@@ -1,6 +1,6 @@
 # Comprehensive Cursor Rules for Modern Web Development (2025 Edition)
 
-A complete collection of **45+ production-ready cursor rules** organized into **10 logical categories** and updated with the **latest 2025 features** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
+A complete collection of **55+ production-ready cursor rules** organized into **10 logical categories** and updated with the **latest 2025 features** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
 
 ## 🎯 Overview
 
@@ -12,41 +12,60 @@ This repository contains comprehensive cursor rules covering the complete modern
 - **Next.js 15/16**: React 19 support, Turbopack stable, Cache Components, unstable_after API
 - **React 19.2**: useActionState, useFormStatus, useOptimistic, useEffectEvent, Activity component
 - **TypeScript 5.8**: Improved control flow, ES2024 support, faster builds, new compiler options
+- **Bun 1.3+**: 7× faster package manager, native TypeScript, built-in test runner, Bun.SQL
 
-### Styling & Data
+### Styling & UI
 - **Tailwind CSS v4**: 5x faster builds, CSS-first config, container queries, oklch colors
+- **Radix UI**: Accessible primitives, single package, cookie support, WebSocket compression
+
+### Data & ORMs
 - **TanStack Query v5**: Suspense hooks, queryOptions helper, useMutationState, 20% smaller
 - **Zod v4**: 14x faster parsing, @zod/mini, global registry, custom metadata, pretty errors
 - **Drizzle ORM 0.44+**: Identity columns, $onUpdate, read replicas, set operators
+- **Prisma ORM 6.16+**: Rust-free (90% smaller), omit API, multi-schema, 3.4× faster
+
+### Testing & Quality
+- **Vitest 4.0**: Visual regression, browser mode, viewport matcher, line number filtering
+- **Playwright 2025**: AI-powered testing with MCP, auto-assertions, enhanced debugging
+
+### Backend & APIs
+- **tRPC v11**: Server-Sent Events, non-JSON content types, improved RSC support
+- **Resend**: React Email integration, batch sending, webhooks, high deliverability
+- **Uploadthing**: Type-safe uploads, automatic optimizations, progress tracking
+- **Upstash Redis**: Serverless, edge-compatible, rate limiting with @upstash/ratelimit
 
 ### Platform & Deployment
 - **Vercel 2025**: Rolling Releases, Fluid Compute, AI Gateway, 300ms global propagation
+- **Turborepo**: Remote caching, parallel execution, task pipelines, incremental builds
 
-## 📁 Organized Rule Structure (45+ Total)
+## 📁 Organized Rule Structure (55+ Total)
 
 All rules are now organized into **10 logical directories** for easy navigation:
 
-### 📂 `.cursor/rules/frameworks/` (3 files)
+### 📂 `.cursor/rules/frameworks/` (4 files)
 Core development frameworks and languages
 - **`typescript.mdc`** - TypeScript 5.8: Improved control flow, ES2024, faster performance
 - **`nextjs.mdc`** - Next.js 15/16: React 19, Turbopack, Cache Components, PPR
 - **`react.mdc`** - React 19.2: New hooks, Actions API, Server Components
+- **`bun.mdc`** - Bun 1.3+: Fast runtime, package manager, test runner, bundler
 
-### 📂 `.cursor/rules/styling/` (3 files)
+### 📂 `.cursor/rules/styling/` (4 files)
 CSS frameworks and animation libraries
 - **`tailwind.mdc`** - Tailwind v4: 5x faster, CSS-first config, container queries
 - **`shadcn.mdc`** - Component library with theming and accessibility
 - **`framer-motion.mdc`** - Animation library with gestures and transitions
+- **`radix-ui.mdc`** - Radix UI Primitives: Accessible, unstyled components
 
 ### 📂 `.cursor/rules/validation/` (2 files)
 Form handling and schema validation
 - **`zod-v4.mdc`** - Zod v4: 14x faster, @zod/mini, global registry, metadata
 - **`react-hook-form.mdc`** - Form handling with validation and optimization
 
-### 📂 `.cursor/rules/data/` (4 files)
+### 📂 `.cursor/rules/data/` (5 files)
 Data fetching, state management, and databases
 - **`tanstack-query.mdc`** - TanStack Query v5: Suspense hooks, queryOptions
 - **`drizzle.mdc`** - Drizzle ORM 0.44+: Identity columns, $onUpdate, read replicas
+- **`prisma.mdc`** - Prisma ORM 6.16+: Rust-free, omit API, multi-schema, 3.4× faster
 - **`supabase.mdc`** - Backend-as-a-service with real-time features
 - **`convex.mdc`** - Real-time backend with TypeScript
 
@@ -65,7 +84,7 @@ Deployment platforms and hosting services
 - **`fly-io.mdc`** - Fly.io global app deployment
 - **`neon.mdc`** - Neon serverless Postgres
 
-### 📂 `.cursor/rules/backend/` (6 files)
+### 📂 `.cursor/rules/backend/` (10 files)
 Backend services, APIs, and automation
 - **`inngest.mdc`** - Event-driven functions and background jobs
 - **`trigger.mdc`** - Trigger.dev v3: Workflow automation
@@ -73,16 +92,22 @@ Backend services, APIs, and automation
 - **`tinybird.mdc`** - Real-time analytics with ClickHouse
 - **`stripe.mdc`** - Payment processing and subscriptions
 - **`qstash.mdc`** - Message queue and scheduling
+- **`trpc.mdc`** - tRPC v11: Type-safe APIs with SSE subscriptions
+- **`resend.mdc`** - Resend email API with React Email integration
+- **`uploadthing.mdc`** - UploadThing: Type-safe file uploads for Next.js
+- **`upstash-redis.mdc`** - Upstash Redis: Serverless, edge-compatible data store
 
-### 📂 `.cursor/rules/quality/` (5 files)
+### 📂 `.cursor/rules/quality/` (7 files)
 Testing, security, performance, and accessibility
 - **`testing-strategy.mdc`** - Comprehensive testing (unit, integration, E2E)
+- **`vitest.mdc`** - Vitest 4.0: Visual regression, browser mode, enhanced reporting
+- **`playwright.mdc`** - Playwright 2025: AI-powered testing with MCP integration
 - **`security.mdc`** - Web application security and OWASP guidelines
 - **`performance.mdc`** - Performance optimization techniques
 - **`accessibility.mdc`** - Web accessibility (WCAG compliance)
 - **`seo.mdc`** - SEO optimization for Next.js
 
-### 📂 `.cursor/rules/conventions/` (9 files)
+### 📂 `.cursor/rules/conventions/` (10 files)
 Code style, architecture, and best practices
 - **`api-design.mdc`** - RESTful API design standards
 - **`naming-conventions.mdc`** - Consistent naming patterns
@@ -93,6 +118,7 @@ Code style, architecture, and best practices
 - **`dependency-injection.mdc`** - DI patterns and IoC containers
 - **`project-structure.mdc`** - File organization patterns
 - **`environment-management.mdc`** - Environment configuration
+- **`turborepo.mdc`** - Turborepo: Monorepo build system with remote caching
 
 ### 📂 `.cursor/rules/meta/` (4 files)
 Meta rules and development guidelines
@@ -147,12 +173,13 @@ Most rules auto-attach based on file patterns:
 - Latest Next.js App Router patterns
 
 ### ✅ Comprehensive Coverage
-- 36 specialized rules covering all aspects of development
+- 55+ specialized rules covering all aspects of development
 - Code quality and architecture guidelines
 - Security, performance, and accessibility standards
-- Testing strategies from unit to E2E
+- Testing strategies from unit to E2E with AI-powered tools
 - SEO optimization and project organization
 - API design and error handling standards
+- Modern ORMs, testing frameworks, and backend services
 
 ### ✅ Developer Experience
 - Enhanced autocomplete and intelligent suggestions
@@ -186,12 +213,14 @@ Includes a complete `package.json.template` with all necessary dependencies:
 
 ## 🌟 Why These Rules?
 
-1. **Comprehensive Coverage** - 36 rules covering every aspect of modern web development
+1. **Comprehensive Coverage** - 55+ rules covering every aspect of modern web development
 2. **Production Tested** - Patterns used in real-world applications
 3. **Performance Focused** - Optimization best practices throughout
 4. **Developer Experience** - Enhanced autocomplete and intelligent suggestions
-5. **Modern & Updated** - Latest framework versions and current best practices
+5. **Modern & Updated** - Latest 2025 framework versions and current best practices
 6. **Quality Focused** - Code quality, testing, and architecture guidelines
+7. **AI-Powered Testing** - Latest Vitest 4.0 and Playwright with MCP integration
+8. **Modern ORMs** - Prisma 6.16+ and Drizzle with latest optimizations
 
 ## 🔧 Writing Your Own Rules
 
