@@ -6,11 +6,27 @@ alwaysApply: false
 ---
 rule_type: auto_attached
 title: React Development Rules
-description: React component patterns and best practices
+description: React 19.2 component patterns, hooks, and best practices
 patterns: ["**/*.{jsx,tsx}", "**/components/**/*.{js,ts}", "**/hooks/**/*.{js,ts}"]
 ---
 
-# React Development Rules
+# React Development Rules (React 19.2)
+
+## What's New in React 19.2 (2025)
+
+### Latest Features
+- **useEffectEvent**: Extract non-reactive logic from effects
+- **Activity Component**: Hide/restore UI and state without unmounting
+- **cacheSignal**: Track cache() lifetime in Server Components
+- **React Compiler**: Automatic optimization (stable)
+- **Server Components**: Fully stable and production-ready
+- **Concurrent Rendering**: Default rendering mode
+- **use Hook**: Read resources conditionally
+- **Actions API**: Simplified async operations
+- **Form Hooks**: useActionState, useFormStatus for better forms
+
+### React Compiler
+React 19+ includes a built-in compiler that automatically optimizes components. Less need for manual useMemo, useCallback, and memo.
 
 ## Component Patterns
 
@@ -117,6 +133,212 @@ function DataFetcher<T>({ url, children }: { url: string } & RenderProps<T>) {
     return <div>Hello {user?.name}</div>
   }}
 </DataFetcher>
+```
+
+## React 19 New Hooks
+
+### use Hook
+```typescript
+// Read promises conditionally
+function UserProfile({ userId }: { userId: string }) {
+  const user = use(fetchUser(userId)) // Can be used in conditions!
+
+  return <div>{user.name}</div>
+}
+
+// Read context conditionally
+function ConditionalTheme({ dark }: { dark: boolean }) {
+  if (dark) {
+    const theme = use(ThemeContext) // Works inside conditionals
+    return <div style={{ background: theme.dark }}>Dark Mode</div>
+  }
+  return <div>Light Mode</div>
+}
+
+// use with async data
+async function fetchData(id: string) {
+  const res = await fetch(`/api/data/${id}`)
+  return res.json()
+}
+
+function DataDisplay({ id }: { id: string }) {
+  const data = use(fetchData(id))
+  return <div>{data.title}</div>
+}
+```
+
+### useActionState (replaces useFormState)
+```typescript
+'use client'
+
+import { useActionState } from 'react'
+
+type FormState = {
+  error?: string
+  success?: boolean
+}
+
+async function submitForm(prevState: FormState | null, formData: FormData) {
+  'use server'
+
+  const name = formData.get('name') as string
+
+  if (!name) {
+    return { error: 'Name is required' }
+  }
+
+  // Save to database
+  await saveUser({ name })
+  return { success: true }
+}
+
+function MyForm() {
+  const [state, formAction, isPending] = useActionState(submitForm, null)
+
+  return (
+    <form action={formAction}>
+      <input name="name" required />
+      <button disabled={isPending}>
+        {isPending ? 'Submitting...' : 'Submit'}
+      </button>
+      {state?.error && <p className="error">{state.error}</p>}
+      {state?.success && <p className="success">Saved!</p>}
+    </form>
+  )
+}
+```
+
+### useFormStatus
+```typescript
+'use client'
+
+import { useFormStatus } from 'react-dom'
+
+function SubmitButton() {
+  const { pending, data, method, action } = useFormStatus()
+
+  return (
+    <button type="submit" disabled={pending}>
+      {pending ? (
+        <>
+          <Spinner />
+          Submitting...
+        </>
+      ) : (
+        'Submit'
+      )}
+    </button>
+  )
+}
+
+export default function Form() {
+  return (
+    <form action={submitAction}>
+      <input name="email" type="email" required />
+      <SubmitButton />
+    </form>
+  )
+}
+```
+
+### useOptimistic
+```typescript
+'use client'
+
+import { useOptimistic, startTransition } from 'react'
+
+type Message = {
+  id: number
+  text: string
+  pending?: boolean
+}
+
+function ChatThread({ messages }: { messages: Message[] }) {
+  const [optimisticMessages, addOptimisticMessage] = useOptimistic(
+    messages,
+    (state, newMessage: string) => [
+      ...state,
+      { id: Date.now(), text: newMessage, pending: true }
+    ]
+  )
+
+  async function sendMessage(formData: FormData) {
+    const text = formData.get('message') as string
+
+    startTransition(() => {
+      addOptimisticMessage(text)
+    })
+
+    await fetch('/api/messages', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    })
+  }
+
+  return (
+    <div>
+      {optimisticMessages.map((msg) => (
+        <div key={msg.id} className={msg.pending ? 'opacity-50' : ''}>
+          {msg.text}
+        </div>
+      ))}
+      <form action={sendMessage}>
+        <input name="message" required />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  )
+}
+```
+
+### useEffectEvent (React 19.2)
+```typescript
+import { useEffectEvent } from 'react'
+
+function ChatRoom({ roomId, theme }: { roomId: string; theme: string }) {
+  // Extract non-reactive logic
+  const onConnected = useEffectEvent(() => {
+    console.log(`Connected to ${roomId} with theme ${theme}`)
+    showNotification(`Connected to ${roomId}`, theme)
+  })
+
+  useEffect(() => {
+    const connection = createConnection(serverUrl, roomId)
+    connection.on('connected', () => {
+      onConnected() // Uses latest theme without re-running effect
+    })
+    connection.connect()
+    return () => connection.disconnect()
+  }, [roomId]) // Only re-run when roomId changes, not theme
+
+  return <div>Chat room {roomId}</div>
+}
+```
+
+### Activity Component (React 19.2)
+```typescript
+import { Activity } from 'react'
+
+function TabPanel({ activeTab }: { activeTab: string }) {
+  return (
+    <div>
+      <Activity mode={activeTab === 'dashboard' ? 'visible' : 'hidden'}>
+        <DashboardTab /> {/* Preserves state when hidden */}
+      </Activity>
+
+      <Activity mode={activeTab === 'profile' ? 'visible' : 'hidden'}>
+        <ProfileTab /> {/* Preserves state when hidden */}
+      </Activity>
+
+      <Activity mode={activeTab === 'settings' ? 'visible' : 'hidden'}>
+        <SettingsTab />
+      </Activity>
+    </div>
+  )
+}
+
+// Before: Component unmounts and loses state
+// After: Component stays mounted, just hidden
 ```
 
 ## Custom Hooks
@@ -664,15 +886,20 @@ describe('useCounter Hook', () => {
 })
 ```
 
-## Best Practices
+## Best Practices (React 19.2)
 
-1. **Use TypeScript for better development experience**
-2. **Keep components small and focused**
-3. **Use custom hooks to share logic**
-4. **Memoize expensive calculations with useMemo**
-5. **Memoize callback functions with useCallback**
-6. **Use React.memo for expensive components**
-7. **Implement proper error boundaries**
-8. **Use context sparingly - prefer prop drilling for simple cases**
-9. **Write comprehensive tests for components and hooks**
-10. **Follow the principle of single responsibility**
+1. **Use TypeScript** - Always use TypeScript for type safety and better DX
+2. **Leverage React Compiler** - Let React auto-optimize; reduce manual useMemo/useCallback
+3. **use Hook for async** - Use `use` hook for conditional promise/context reading
+4. **Actions for forms** - Use Actions API with useActionState/useFormStatus
+5. **Optimistic UI** - Use useOptimistic for instant feedback in async operations
+6. **useEffectEvent** - Extract non-reactive logic from effects (React 19.2+)
+7. **Activity for tabs** - Use Activity component to preserve state when hiding UI
+8. **Server Components** - Default to Server Components in Next.js, use 'use client' only when needed
+9. **Keep components small** - Single responsibility, composable components
+10. **Custom hooks** - Extract reusable logic into well-named custom hooks
+11. **Error boundaries** - Always wrap risky components in error boundaries
+12. **Test thoroughly** - Write tests for components, hooks, and user interactions
+13. **Concurrent features** - Use startTransition for non-urgent updates
+14. **Minimize re-renders** - Use React Compiler, or manual memo when needed
+15. **Prop drilling vs Context** - Prefer prop drilling for simple cases, context for deep trees

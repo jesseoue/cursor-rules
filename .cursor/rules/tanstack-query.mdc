@@ -3,11 +3,24 @@ description:
 globs:
 alwaysApply: false
 ---
-# Tanstack Query Development Rules
+# TanStack Query v5 Development Rules
+
+## What's New in TanStack Query v5 (2025)
+
+### Major Improvements
+- **20% Smaller Bundle**: Optimized bundle size for better performance
+- **Simplified API**: Single object parameter for all hooks (removed overloads)
+- **Stable Suspense**: useSuspenseQuery, useSuspenseInfiniteQuery, useSuspenseQueries
+- **useMutationState Hook**: Access state of all mutations across components
+- **queryOptions Helper**: Type-safe query definitions for prefetching
+- **gcTime Renamed**: `cacheTime` → `gcTime` (garbage collect time)
+- **maxPages Option**: Limit pages stored in infinite queries
+- **Framework-Agnostic DevTools**: Revamped UI with cache editing and light mode
+- **Requires React 18+**: Uses useSyncExternalStore hook
 
 ## Core Setup
 
-### Query Client Configuration
+### Query Client Configuration (v5)
 ```typescript
 // lib/react-query.ts
 import { QueryClient } from '@tanstack/react-query'
@@ -16,13 +29,12 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000, // 5 minutes
-      cacheTime: 10 * 60 * 1000, // 10 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes (renamed from cacheTime)
       retry: (failureCount, error) => {
         // Don't retry on 4xx errors except 429
         if (error?.status >= 400 && error?.status < 500 && error?.status !== 429) {
           return false
         }
-        // Retry up to 3 times for other errors
         return failureCount < 3
       },
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
@@ -39,7 +51,7 @@ export const queryClient = new QueryClient({
 })
 ```
 
-### Provider Setup
+### Provider Setup (React 18+)
 ```tsx
 // app/providers/query-provider.tsx
 'use client'
@@ -54,7 +66,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       defaultOptions: {
         queries: {
           staleTime: 5 * 60 * 1000,
-          cacheTime: 10 * 60 * 1000,
+          gcTime: 10 * 60 * 1000, // v5: renamed from cacheTime
           refetchOnWindowFocus: false,
         },
       },
@@ -405,6 +417,154 @@ export function useToggleLike() {
       queryClient.invalidateQueries({ queryKey: ['posts', postId] })
     },
   })
+}
+```
+
+## TanStack Query v5 New Features
+
+### Suspense Queries (Stable in v5)
+```typescript
+// useSuspenseQuery - stable in v5
+import { useSuspenseQuery } from '@tanstack/react-query'
+
+function UserProfile({ userId }: { userId: string }) {
+  // No loading state needed - Suspense handles it
+  const { data } = useSuspenseQuery({
+    queryKey: ['user', userId],
+    queryFn: () => fetchUser(userId),
+  })
+
+  // data is always defined (no need for optional chaining)
+  return <div>{data.name}</div>
+}
+
+// Usage with Suspense boundary
+function App() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <UserProfile userId="123" />
+    </Suspense>
+  )
+}
+```
+
+### useSuspenseInfiniteQuery
+```typescript
+import { useSuspenseInfiniteQuery } from '@tanstack/react-query'
+
+function InfinitePosts() {
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+  } = useSuspenseInfiniteQuery({
+    queryKey: ['posts'],
+    queryFn: ({ pageParam }) => fetchPosts({ page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.nextPage,
+    maxPages: 3, // v5: Limit number of pages stored
+  })
+
+  return (
+    <div>
+      {data.pages.map((page) =>
+        page.posts.map((post) => <Post key={post.id} post={post} />)
+      )}
+      {hasNextPage && <button onClick={() => fetchNextPage()}>Load More</button>}
+    </div>
+  )
+}
+```
+
+### queryOptions Helper (v5)
+```typescript
+// Define reusable query options with type safety
+import { queryOptions } from '@tanstack/react-query'
+
+const userQueryOptions = (userId: string) =>
+  queryOptions({
+    queryKey: ['user', userId],
+    queryFn: () => fetchUser(userId),
+    staleTime: 5 * 60 * 1000,
+  })
+
+// Use in component
+function UserComponent({ userId }: { userId: string }) {
+  const query = useQuery(userQueryOptions(userId))
+  return <div>{query.data?.name}</div>
+}
+
+// Use for prefetching
+function prefetchUser(userId: string) {
+  return queryClient.prefetchQuery(userQueryOptions(userId))
+}
+
+// Server-side prefetching (Next.js)
+export async function getServerSideProps() {
+  await queryClient.prefetchQuery(userQueryOptions('123'))
+
+  return {
+    props: {
+      dehydratedState: dehydrate(queryClient),
+    },
+  }
+}
+```
+
+### useMutationState Hook (v5)
+```typescript
+// Access all mutation states across components
+import { useMutationState } from '@tanstack/react-query'
+
+function GlobalMutationStatus() {
+  // Get all pending mutations
+  const pendingMutations = useMutationState({
+    filters: { status: 'pending' },
+    select: (mutation) => mutation.state.variables,
+  })
+
+  // Get all error mutations
+  const failedMutations = useMutationState({
+    filters: { status: 'error' },
+    select: (mutation) => ({
+      error: mutation.state.error,
+      variables: mutation.state.variables,
+    }),
+  })
+
+  return (
+    <div>
+      {pendingMutations.length > 0 && (
+        <div>Saving {pendingMutations.length} items...</div>
+      )}
+      {failedMutations.map((mutation, i) => (
+        <div key={i}>Failed to save: {mutation.error?.message}</div>
+      ))}
+    </div>
+  )
+}
+```
+
+### useSuspenseQueries (v5)
+```typescript
+import { useSuspenseQueries } from '@tanstack/react-query'
+
+function MultipleDataSources({ userIds }: { userIds: string[] }) {
+  const results = useSuspenseQueries({
+    queries: userIds.map((id) => ({
+      queryKey: ['user', id],
+      queryFn: () => fetchUser(id),
+    })),
+  })
+
+  // All data is guaranteed to be loaded
+  return (
+    <div>
+      {results.map((result, i) => (
+        <div key={i}>{result.data.name}</div>
+      ))}
+    </div>
+  )
 }
 ```
 

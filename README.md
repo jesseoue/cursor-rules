@@ -1,34 +1,44 @@
-# Comprehensive Cursor Rules for Modern Web Development
+# Comprehensive Cursor Rules for Modern Web Development (2025 Edition)
 
-A complete collection of **36 production-ready cursor rules** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
+A complete collection of **45+ production-ready cursor rules** updated with the **latest 2025 features** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
 
 ## 🎯 Overview
 
-This repository contains comprehensive cursor rules covering the complete modern web development stack, from core development practices to frontend frameworks, backend services, databases, authentication, payments, and more.
+This repository contains comprehensive cursor rules covering the complete modern web development stack, from core development practices to frontend frameworks, backend services, databases, authentication, payments, and more. **All major frameworks have been updated with 2025 features including Next.js 15/16, React 19.2, TypeScript 5.8, Tailwind v4, TanStack Query v5, and Zod v4.**
 
-## 📁 Available Rules (36 Total)
+## ✨ Latest Updates (2025)
+
+### Core Frameworks
+- **Next.js 15/16**: React 19 support, Turbopack stable, Cache Components, unstable_after API
+- **React 19.2**: useActionState, useFormStatus, useOptimistic, useEffectEvent, Activity component
+- **TypeScript 5.8**: Improved control flow, ES2024 support, faster builds, new compiler options
+- **Tailwind CSS v4**: 5x faster builds, CSS-first config, container queries, oklch colors
+- **TanStack Query v5**: Suspense hooks, queryOptions helper, useMutationState, 20% smaller
+- **Zod v4**: 14x faster parsing, @zod/mini, global registry, custom metadata, pretty errors
+
+## 📁 Available Rules (45+ Total)
 
 ### 🧭 Meta & Development Guidelines
 - **`_meta-guide.mdc`** - Guide for writing effective cursor rules with proper structure
 - **`direct-tone.mdc`** - Communication style for direct, efficient AI responses
 - **`auto-commit.mdc`** - Git commit conventions and best practices
 
-### 🏗️ Core Frameworks & Languages
-- **`typescript.mdc`** - Strict TypeScript configuration, advanced patterns, and utility types
-- **`nextjs.mdc`** - Next.js App Router, Server Components, API routes, and performance optimization
-- **`react.mdc`** - Modern React patterns, hooks, context, and performance optimization
+### 🏗️ Core Frameworks & Languages (Updated 2025)
+- **`typescript.mdc`** - **TypeScript 5.8**: Improved control flow, ES2024, faster performance
+- **`nextjs.mdc`** - **Next.js 15/16**: React 19, Turbopack stable, Cache Components, PPR
+- **`react.mdc`** - **React 19.2**: New hooks, Actions API, Server Components, Compiler
 
-### 🎨 Styling & UI
-- **`tailwind.mdc`** - Utility-first CSS framework with responsive design patterns
+### 🎨 Styling & UI (Updated 2025)
+- **`tailwind.mdc`** - **Tailwind v4**: 5x faster, CSS-first config, container queries, oklch
 - **`shadcn.mdc`** - Component library with theming and accessibility
 - **`framer-motion.mdc`** - Animation library with gestures, transitions, and performance
 
-### 📝 Form Handling & Validation
+### 📝 Form Handling & Validation (Updated 2025)
 - **`react-hook-form.mdc`** - Form handling with validation and performance optimization
-- **`zod-v4.mdc`** - Modern Zod v4 schema validation with type inference
+- **`zod-v4.mdc`** - **Zod v4**: 14x faster, @zod/mini, global registry, custom metadata
 
-### 🔄 Data Fetching & State Management
-- **`tanstack-query.mdc`** - Data synchronization, caching, and mutations
+### 🔄 Data Fetching & State Management (Updated 2025)
+- **`tanstack-query.mdc`** - **TanStack Query v5**: Suspense hooks, queryOptions, useMutationState
 - **`supabase.mdc`** - Backend-as-a-service with real-time features and authentication
 
 ### 🗄️ Database & ORM

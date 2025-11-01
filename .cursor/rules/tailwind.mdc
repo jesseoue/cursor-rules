@@ -3,7 +3,120 @@ description:
 globs:
 alwaysApply: false
 ---
-# Tailwind CSS Development Rules
+# Tailwind CSS v4 Development Rules
+
+## What's New in Tailwind CSS v4 (2025)
+
+### Major Improvements
+- **5x Faster Builds**: Rust-based Oxide engine with Lightning CSS
+- **100x Faster Incremental Builds**: Measured in microseconds
+- **Zero Configuration**: Automatic template file discovery
+- **CSS-First Config**: Customize directly in CSS instead of JavaScript
+- **CSS Variables by Default**: All design tokens available as CSS vars
+- **Modern CSS Features**: Cascade layers, @property, color-mix()
+- **Container Queries in Core**: @min-* and @max-* variants
+- **Modernized Colors**: oklch color space for vivid P3 colors
+- **Dynamic Values**: h-100 instead of h-[100px] (no brackets needed)
+- **Single Line Setup**: Simpler installation with Vite plugin
+- **Smaller Dependencies**: Fewer package dependencies
+
+### Quick Setup (v4)
+```bash
+npm install tailwindcss@next @tailwindcss/vite@next
+```
+
+```typescript
+// vite.config.ts
+import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [tailwindcss()],
+})
+```
+
+```css
+/* app/globals.css - Single line! */
+@import "tailwindcss";
+```
+
+### CSS-First Configuration (v4)
+```css
+/* app/globals.css */
+@import "tailwindcss";
+
+/* Customize with CSS variables */
+@theme {
+  --color-primary: oklch(0.6 0.2 250);
+  --color-secondary: oklch(0.7 0.15 180);
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'Fira Code', monospace;
+
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+
+  --breakpoint-3xl: 1920px;
+}
+```
+
+### Tailwind v4 New Features
+
+#### Container Queries (Built-in)
+```tsx
+// v4: Container queries in core with @min-* and @max-* variants
+<div className="@container">
+  <div className="@md:flex @lg:grid @lg:grid-cols-2">
+    <div className="@min-md:p-6 @max-lg:text-sm">
+      Content adapts to container size
+    </div>
+  </div>
+</div>
+
+// Named containers
+<div className="@container/sidebar">
+  <div className="@lg/sidebar:flex">
+    Sidebar content
+  </div>
+</div>
+```
+
+#### Dynamic Values (No Brackets)
+```tsx
+// v4: Dynamic values without brackets
+<div className="h-100 w-200 p-15 mt-32 gap-18">
+  No more h-[100px] syntax needed!
+</div>
+
+// Still supports arbitrary values when needed
+<div className="bg-[#1a1a1a] text-[17.5px]">
+  Arbitrary values still work
+</div>
+```
+
+#### Modern Colors (oklch)
+```css
+/* v4: oklch color space for vivid P3 colors */
+@theme {
+  --color-brand: oklch(0.65 0.25 270);
+  --color-accent: oklch(0.75 0.2 150);
+}
+```
+
+```tsx
+// Use in components
+<div className="bg-brand text-accent">
+  Vibrant P3 colors on modern displays
+</div>
+```
+
+#### color-mix() Support
+```tsx
+// v4: Use color-mix for dynamic color variations
+<div className="bg-[color-mix(in_oklch,_theme(colors.primary),_white_20%)]">
+  Lighter primary color
+</div>
+```
 
 ## Core Principles
 

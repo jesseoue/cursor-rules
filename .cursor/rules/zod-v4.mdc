@@ -11,8 +11,31 @@ alwaysApply: false
 
 <zod-v4-guidelines>
 
+<whats-new-in-v4>
+<major-improvements>
+- **14x Faster String Parsing**: Significant performance boost
+- **7x Faster Array Parsing**: Optimized array validation
+- **6.5x Faster Object Parsing**: Enhanced object validation speed
+- **57% Smaller Bundle**: Reduced core bundle size
+- **20x Fewer TS Instantiations**: Faster type-checking and IDE performance
+- **@zod/mini Package**: Lightweight 1.9KB gzipped version for frontends
+- **Global Registry**: Named schema management for large apps
+- **Custom Metadata**: Support for form generation and schema-driven systems
+- **Built-in JSON Schema**: Native JSON Schema support
+- **Enhanced Error Messages**: Pretty-printing for readable validation errors
+</major-improvements>
+</whats-new-in-v4>
+
 <critical-import-rule>
 <requirement>Always import from 'zod/v4', never 'zod'</requirement>
+<installation>
+```bash
+npm install zod@next
+
+# For lightweight frontend use
+npm install @zod/mini
+```
+</installation>
 </critical-import-rule>
 
 <core-rules>
@@ -139,6 +162,200 @@ z.function({
 </rule>
 
 </core-rules>
+
+<new-v4-features>
+
+<feature>
+<name>Using @zod/mini for Frontend</name>
+<when-to-use>Use @zod/mini in frontend applications where bundle size matters</when-to-use>
+<example>
+```typescript
+// Instead of: import { z } from 'zod/v4'
+import { z } from '@zod/mini'
+
+// Same API, 1.9KB gzipped!
+export type LoginForm = z.infer<typeof LoginForm>
+export const LoginForm = z.object({
+  email: z.email(),
+  password: z.string().min(8),
+})
+```
+</example>
+</feature>
+
+<feature>
+<name>.overwrite() Method</name>
+<when-to-use>Use when transforming data without changing the inferred type</when-to-use>
+<example>
+```typescript
+// Normalize email without changing type
+export type Email = z.infer<typeof Email>
+export const Email = z.email().overwrite((email) => email.toLowerCase())
+
+// Before: email could be "USER@EXAMPLE.COM"
+// After: email is "user@example.com" but type is still string
+```
+</example>
+</feature>
+
+<feature>
+<name>Global Registry</name>
+<when-to-use>Use in large apps or plugin systems where schemas need to be shared</when-to-use>
+<example>
+```typescript
+import { z } from 'zod/v4'
+
+// Register a schema globally
+z.registry.set('User', z.object({
+  id: z.string(),
+  email: z.email(),
+  name: z.string(),
+}))
+
+// Retrieve it anywhere in your app
+const UserSchema = z.registry.get('User')
+
+// Use in other schemas
+export type Post = z.infer<typeof Post>
+export const Post = z.object({
+  id: z.string(),
+  author: z.registry.get('User'),
+  content: z.string(),
+})
+```
+</example>
+</feature>
+
+<feature>
+<name>Custom Metadata for Form Generation</name>
+<when-to-use>Use when building form libraries or schema-driven UI systems</when-to-use>
+<example>
+```typescript
+// Define schema with UI metadata
+export type UserProfile = z.infer<typeof UserProfile>
+export const UserProfile = z.object({
+  name: z.string().meta({
+    label: 'Full Name',
+    placeholder: 'Enter your full name',
+    order: 1,
+  }),
+  email: z.email().meta({
+    label: 'Email Address',
+    placeholder: 'you@example.com',
+    order: 2,
+  }),
+  age: z.number().min(18).meta({
+    label: 'Age',
+    placeholder: '18',
+    order: 3,
+    helpText: 'Must be 18 or older',
+  }),
+})
+
+// Use metadata to generate forms
+function generateForm(schema: z.ZodObject<any>) {
+  const fields = Object.entries(schema.shape).map(([key, field]) => ({
+    name: key,
+    ...field._def.meta, // Access metadata
+  }))
+  return fields.sort((a, b) => a.order - b.order)
+}
+```
+</example>
+</feature>
+
+<feature>
+<name>Pretty Error Messages</name>
+<when-to-use>Use for user-friendly error display in production</when-to-use>
+<example>
+```typescript
+import { z } from 'zod/v4'
+
+export type Order = z.infer<typeof Order>
+export const Order = z.object({
+  items: z.array(z.object({
+    productId: z.string(),
+    quantity: z.number().min(1),
+  })).min(1),
+  email: z.email(),
+})
+
+const result = Order.safeParse({ items: [], email: 'invalid' })
+
+if (!result.success) {
+  // Old way: Complex ZodError object
+  console.log(result.error)
+
+  // New way: Pretty printed errors
+  console.log(z.prettifyError(result.error))
+  /*
+  Validation failed:
+    - items: Array must contain at least 1 element(s)
+    - email: Invalid email
+  */
+
+  // Tree format for nested errors
+  console.log(z.treeifyError(result.error))
+}
+```
+</example>
+</feature>
+
+<feature>
+<name>True Recursive Types</name>
+<when-to-use>Use for nested data structures like comments, org charts, etc.</when-to-use>
+<example>
+```typescript
+// v4: No more z.lazy() needed!
+export type Comment = z.infer<typeof Comment>
+export const Comment = z.object({
+  id: z.string(),
+  text: z.string(),
+  author: z.string(),
+  replies: z.array(Comment), // Direct recursion!
+})
+
+// Works seamlessly
+const comment: Comment = {
+  id: '1',
+  text: 'Great post!',
+  author: 'Alice',
+  replies: [
+    {
+      id: '2',
+      text: 'Thanks!',
+      author: 'Bob',
+      replies: [],
+    },
+  ],
+}
+```
+</example>
+</feature>
+
+<feature>
+<name>Template Literals</name>
+<when-to-use>Use for validating specific string patterns</when-to-use>
+<example>
+```typescript
+// Validate template literal types
+export type ColorHex = z.infer<typeof ColorHex>
+export const ColorHex = z.template`#${z.string().length(6)}`
+
+ColorHex.parse('#ff0000') // ✓
+ColorHex.parse('#f00') // ✗ Too short
+ColorHex.parse('ff0000') // ✗ Missing #
+
+// Complex patterns
+export type SemVer = z.infer<typeof SemVer>
+export const SemVer = z.template`${z.number()}.${z.number()}.${z.number()}`
+
+SemVer.parse('1.2.3') // ✓
+```
+</example>
+</feature>
+
+</new-v4-features>
 
 <quick-reference>
 

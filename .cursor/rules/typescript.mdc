@@ -6,31 +6,63 @@ alwaysApply: false
 ---
 rule_type: always
 title: TypeScript Development Rules
-description: Core TypeScript configuration and development patterns
+description: TypeScript 5.8 configuration and development patterns
 ---
 
-# TypeScript Development Rules
+# TypeScript Development Rules (TypeScript 5.8)
+
+## What's New in TypeScript 5.7/5.8 (2025)
+
+### TypeScript 5.8 Features
+- **Improved Control Flow Analysis**: Better type narrowing in return statements
+- **--erasableSyntaxOnly Flag**: Error on non-erasable TypeScript syntax
+- **--module node18**: Stable module flag for Node.js 18
+- **--libReplacement**: Control lib replacement behavior
+- **Performance Optimizations**: Faster builds and watch mode
+
+### TypeScript 5.7 Features
+- **Never-Initialized Variable Checks**: Catches uninitialized vars in nested functions
+- **ES2024 Support**: Full support for latest ECMAScript features
+- **--rewriteRelativeImportExtensions**: Auto-rewrite .ts to .js extensions
+- **2.5x Faster Startup**: Improved performance for tsc --version and more
 
 ## Core Configuration
 
-### tsconfig.json Setup
+### Modern tsconfig.json (TypeScript 5.8)
 ```json
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "esnext",
     "moduleResolution": "bundler",
+
+    // TypeScript 5.7+ options
+    "rewriteRelativeImportExtensions": true,
+
+    // TypeScript 5.8+ options
+    "erasableSyntaxOnly": false,
+
+    // Strict type checking
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noPropertyAccessFromIndexSignature": true,
+
+    // Module & imports
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "verbatimModuleSyntax": true,
+
+    // Emit
+    "noEmit": true,
     "incremental": true,
-    "plugins": [{ "name": "next" }],
+    "jsx": "preserve",
+
+    // Path mapping
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
@@ -38,12 +70,31 @@ description: Core TypeScript configuration and development patterns
       "@/lib/*": ["./src/lib/*"],
       "@/types/*": ["./src/types/*"]
     },
+
+    // Advanced
     "forceConsistentCasingInFileNames": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true
+    "plugins": [{ "name": "next" }]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
+}
+```
+
+### Node.js Configuration (TypeScript 5.8)
+```json
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "node18",
+    "moduleResolution": "node18",
+    "lib": ["ES2024"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "noUncheckedIndexedAccess": true
+  }
 }
 ```
 
@@ -366,15 +417,99 @@ type AppConfig = {
 }
 ```
 
-## Best Practices
+## TypeScript 5.7/5.8 New Features
 
-1. **Always use strict TypeScript configuration**
-2. **Prefer type over interface for unions and primitives**
-3. **Use interface for object shapes that might be extended**
-4. **Create utility types for common patterns**
-5. **Use type guards for runtime type checking**
-6. **Implement proper error handling with Result types**
-7. **Validate environment variables at startup**
-8. **Use const assertions for immutable data**
-9. **Prefer branded types for IDs and unique values**
-10. **Use satisfies operator for type checking without widening**
+### Improved Control Flow Analysis (TS 5.8)
+```typescript
+// Before TS 5.8: Type narrowing didn't work properly
+function process<T extends string | number>(value: T) {
+  if (typeof value === 'string') {
+    return value.toUpperCase() // Error in TS 5.7
+  }
+  return value * 2
+}
+
+// TS 5.8: Improved type narrowing works correctly
+function processImproved<T extends string | number>(value: T) {
+  if (typeof value === 'string') {
+    return value.toUpperCase() // ✓ Works in TS 5.8!
+  }
+  return value * 2
+}
+```
+
+### Never-Initialized Variable Checks (TS 5.7)
+```typescript
+// TS 5.7 catches uninitialized variables in nested functions
+function example() {
+  let x: number
+
+  function nested() {
+    console.log(x) // Error: Variable 'x' is used before being assigned
+  }
+
+  nested()
+  x = 10
+}
+```
+
+### ES2024 Features
+```typescript
+// Promise.withResolvers (ES2024)
+const { promise, resolve, reject } = Promise.withResolvers<number>()
+
+setTimeout(() => resolve(42), 1000)
+const result = await promise
+
+// Object.groupBy (ES2024)
+const people = [
+  { name: 'Alice', age: 25 },
+  { name: 'Bob', age: 30 },
+  { name: 'Charlie', age: 25 }
+]
+
+const grouped = Object.groupBy(people, (person) => person.age)
+// { 25: [...], 30: [...] }
+
+// Map.groupBy (ES2024)
+const map = Map.groupBy(people, (person) => person.age)
+```
+
+### Satisfies Operator
+```typescript
+// Type check without widening
+type Colors = 'red' | 'green' | 'blue'
+
+const config = {
+  primary: 'red',
+  secondary: 'green',
+  border: '#ccc',
+} satisfies Record<string, string>
+
+// Still has literal types
+config.primary // type: 'red', not string
+
+// With type narrowing
+const palette = {
+  red: [255, 0, 0],
+  green: '#00ff00',
+  blue: [0, 0, 255],
+} satisfies Record<Colors, string | number[]>
+```
+
+## Best Practices (TypeScript 5.8)
+
+1. **Use strict mode** - Enable all strict type-checking options
+2. **ES2024 target** - Use latest ECMAScript features with `target: "ES2024"`
+3. **Type over interface** - Prefer type for unions and primitives
+4. **Interface for extension** - Use interface for object shapes that might be extended
+5. **Utility types** - Create reusable utility types for common patterns
+6. **Type guards** - Use type guards for runtime type checking
+7. **Result types** - Implement proper error handling with Result pattern
+8. **Validate env** - Validate environment variables at startup with Zod
+9. **Const assertions** - Use `as const` for immutable data and literal types
+10. **Branded types** - Use branded types for IDs and unique values
+11. **satisfies operator** - Use satisfies for type checking without widening
+12. **noUncheckedIndexedAccess** - Always enable for safer array/object access
+13. **verbatimModuleSyntax** - Use for better ESM/CJS compatibility
+14. **Control flow analysis** - Leverage TS 5.8 improved type narrowing
