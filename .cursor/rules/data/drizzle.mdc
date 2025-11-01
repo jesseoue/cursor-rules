@@ -1,16 +1,95 @@
 ---
-description:
-globs:
+description: Drizzle ORM 0.44+ with identity columns, $onUpdate, and modern PostgreSQL patterns
+globs: ["**/db/**/*.ts", "**/schema/**/*.ts", "**/drizzle/**/*.ts", "drizzle.config.*"]
 alwaysApply: false
 ---
----
-rule_type: auto_attached
-title: Drizzle ORM Rules
-description: Database schema definitions and query patterns with Drizzle ORM
-patterns: ["**/db/**/*.ts", "**/schema/**/*.ts", "**/drizzle/**/*.ts", "drizzle.config.*"]
----
 
-# Drizzle ORM Rules
+# Drizzle ORM Rules (2025 Edition)
+
+## What's New in Drizzle ORM (2025)
+
+### Latest Features (v0.44+)
+- **Identity Columns (Recommended)**: PostgreSQL identity columns replace serial types
+- **$onUpdate Functionality**: Automatic timestamp updates for PostgreSQL, MySQL, SQLite
+- **New Drivers**: PGlite, Xata, op-sqlite support
+- **Enhanced Drizzle Kit**: 3000+ tests, fully updated alternation engine
+- **Neon HTTP Batch**: Batch query support for Neon
+- **Read Replicas**: Built-in read replica support
+- **Set Operators**: UNION, INTERSECT, EXCEPT support
+- **Aggregate Helpers**: New SQL aggregate function helpers
+
+## New Features (2025)
+
+### Identity Columns (Recommended over Serial)
+```typescript
+import { pgTable, uuid, varchar, integer } from 'drizzle-orm/pg-core'
+
+// ✅ Modern: Use identity columns (PostgreSQL recommendation)
+export const users = pgTable('users', {
+  id: integer('id').generatedAlwaysAsIdentity({ startWith: 1000 }),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  name: varchar('name', { length: 255 }),
+})
+
+// ❌ Old: Serial types (deprecated)
+// id: serial('id').primaryKey()
+```
+
+### $onUpdate for Automatic Timestamps
+```typescript
+import { pgTable, uuid, varchar, timestamp } from 'drizzle-orm/pg-core'
+
+export const posts = pgTable('posts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  title: varchar('title', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  // Automatically updates on every UPDATE
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()),
+})
+
+// Also works for MySQL and SQLite!
+```
+
+### Read Replicas Support
+```typescript
+import { drizzle } from 'drizzle-orm/postgres-js'
+import postgres from 'postgres'
+
+const primary = postgres(process.env.DATABASE_URL_PRIMARY)
+const replica1 = postgres(process.env.DATABASE_URL_REPLICA_1)
+const replica2 = postgres(process.env.DATABASE_URL_REPLICA_2)
+
+const db = drizzle({
+  client: primary,
+  readReplicas: [replica1, replica2], // Reads distributed across replicas
+})
+
+// Writes go to primary, reads distributed to replicas
+const users = await db.select().from(usersTable)
+```
+
+### Set Operators (UNION, INTERSECT, EXCEPT)
+```typescript
+import { union, intersect, except } from 'drizzle-orm/pg-core'
+
+// UNION
+const allUsers = await union(
+  db.select().from(activeUsers),
+  db.select().from(inactiveUsers)
+)
+
+// INTERSECT
+const commonUsers = await intersect(
+  db.select({ id: users.id }).from(users),
+  db.select({ id: subscribers.userId }).from(subscribers)
+)
+
+// EXCEPT (difference)
+const nonSubscribers = await except(
+  db.select({ id: users.id }).from(users),
+  db.select({ id: subscribers.userId }).from(subscribers)
+)
+```
 
 ## Schema Definition
 

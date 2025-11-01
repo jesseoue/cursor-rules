@@ -1,17 +1,33 @@
 ---
-description:
-globs:
-alwaysApply: false
----
----
-description: Vercel platform development and deployment best practices including Edge Functions, serverless functions, and performance optimization
-globs: []
+description: Vercel deployment platform with Next.js 15/16, Rolling Releases, and AI Cloud features
+globs: ["vercel.json", "**/vercel/**", "**/.vercel/**"]
 alwaysApply: false
 ---
 
 <vercel-best-practices>
 
-<title>Vercel Platform Development and Deployment Best Practices</title>
+<title>Vercel Platform Development and Deployment (2025 Edition)</title>
+
+<whats-new-2025>
+<major-features>
+- **Rolling Releases**: Safe incremental rollouts with automatic monitoring and rollback
+- **Fluid Compute**: Active CPU pricing with persistent function execution
+- **Microfrontends**: Independently deployable units with team-specific tech stacks
+- **AI Gateway**: Unified access to 100+ LLMs (OpenAI, Anthropic, Google, xAI)
+- **Vercel Agent (Beta)**: AI-powered code reviews and automated patching
+- **Python SDK (Beta)**: Deploy FastAPI and Flask apps on Vercel AI Cloud
+- **300ms Global Propagation**: Ultra-fast deployment and firewall rule updates
+- **Invisible CAPTCHA**: BotID integration for bot protection
+- **Next.js 15/16 Support**: Full support for latest Next.js features
+</major-features>
+
+<deployment-improvements>
+- Rolling releases propagate globally in under 300ms
+- Automatic rollback on TTFB degradation or error spikes
+- Function execution persists across invocations (cost savings)
+- No custom routing required for gradual rollouts
+</deployment-improvements>
+</whats-new-2025>
 
 <project-configuration>
 <rules>

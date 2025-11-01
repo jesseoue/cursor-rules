@@ -1,8 +1,9 @@
 ---
-description:
-globs:
+description: Supabase backend-as-a-service with real-time features and authentication
+globs: ["**/lib/supabase*.{ts,tsx}", "**/supabase/**/*.{ts,tsx}"]
 alwaysApply: false
 ---
+
 # Supabase Development Rules
 
 ## Core Setup

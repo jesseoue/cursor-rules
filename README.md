@@ -1,10 +1,10 @@
 # Comprehensive Cursor Rules for Modern Web Development (2025 Edition)
 
-A complete collection of **45+ production-ready cursor rules** updated with the **latest 2025 features** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
+A complete collection of **45+ production-ready cursor rules** organized into **10 logical categories** and updated with the **latest 2025 features** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
 
 ## 🎯 Overview
 
-This repository contains comprehensive cursor rules covering the complete modern web development stack, from core development practices to frontend frameworks, backend services, databases, authentication, payments, and more. **All major frameworks have been updated with 2025 features including Next.js 15/16, React 19.2, TypeScript 5.8, Tailwind v4, TanStack Query v5, and Zod v4.**
+This repository contains comprehensive cursor rules covering the complete modern web development stack, from core development practices to frontend frameworks, backend services, databases, authentication, payments, and more. **All major frameworks have been updated with 2025 features including Next.js 15/16, React 19.2, TypeScript 5.8, Tailwind v4, TanStack Query v5, Zod v4, Drizzle ORM, and Vercel.**
 
 ## ✨ Latest Updates (2025)
 
@@ -12,77 +12,94 @@ This repository contains comprehensive cursor rules covering the complete modern
 - **Next.js 15/16**: React 19 support, Turbopack stable, Cache Components, unstable_after API
 - **React 19.2**: useActionState, useFormStatus, useOptimistic, useEffectEvent, Activity component
 - **TypeScript 5.8**: Improved control flow, ES2024 support, faster builds, new compiler options
+
+### Styling & Data
 - **Tailwind CSS v4**: 5x faster builds, CSS-first config, container queries, oklch colors
 - **TanStack Query v5**: Suspense hooks, queryOptions helper, useMutationState, 20% smaller
 - **Zod v4**: 14x faster parsing, @zod/mini, global registry, custom metadata, pretty errors
+- **Drizzle ORM 0.44+**: Identity columns, $onUpdate, read replicas, set operators
 
-## 📁 Available Rules (45+ Total)
+### Platform & Deployment
+- **Vercel 2025**: Rolling Releases, Fluid Compute, AI Gateway, 300ms global propagation
 
-### 🧭 Meta & Development Guidelines
-- **`_meta-guide.mdc`** - Guide for writing effective cursor rules with proper structure
-- **`direct-tone.mdc`** - Communication style for direct, efficient AI responses
-- **`auto-commit.mdc`** - Git commit conventions and best practices
+## 📁 Organized Rule Structure (45+ Total)
 
-### 🏗️ Core Frameworks & Languages (Updated 2025)
-- **`typescript.mdc`** - **TypeScript 5.8**: Improved control flow, ES2024, faster performance
-- **`nextjs.mdc`** - **Next.js 15/16**: React 19, Turbopack stable, Cache Components, PPR
-- **`react.mdc`** - **React 19.2**: New hooks, Actions API, Server Components, Compiler
+All rules are now organized into **10 logical directories** for easy navigation:
 
-### 🎨 Styling & UI (Updated 2025)
-- **`tailwind.mdc`** - **Tailwind v4**: 5x faster, CSS-first config, container queries, oklch
+### 📂 `.cursor/rules/frameworks/` (3 files)
+Core development frameworks and languages
+- **`typescript.mdc`** - TypeScript 5.8: Improved control flow, ES2024, faster performance
+- **`nextjs.mdc`** - Next.js 15/16: React 19, Turbopack, Cache Components, PPR
+- **`react.mdc`** - React 19.2: New hooks, Actions API, Server Components
+
+### 📂 `.cursor/rules/styling/` (3 files)
+CSS frameworks and animation libraries
+- **`tailwind.mdc`** - Tailwind v4: 5x faster, CSS-first config, container queries
 - **`shadcn.mdc`** - Component library with theming and accessibility
-- **`framer-motion.mdc`** - Animation library with gestures, transitions, and performance
+- **`framer-motion.mdc`** - Animation library with gestures and transitions
 
-### 📝 Form Handling & Validation (Updated 2025)
-- **`react-hook-form.mdc`** - Form handling with validation and performance optimization
-- **`zod-v4.mdc`** - **Zod v4**: 14x faster, @zod/mini, global registry, custom metadata
+### 📂 `.cursor/rules/validation/` (2 files)
+Form handling and schema validation
+- **`zod-v4.mdc`** - Zod v4: 14x faster, @zod/mini, global registry, metadata
+- **`react-hook-form.mdc`** - Form handling with validation and optimization
 
-### 🔄 Data Fetching & State Management (Updated 2025)
-- **`tanstack-query.mdc`** - **TanStack Query v5**: Suspense hooks, queryOptions, useMutationState
-- **`supabase.mdc`** - Backend-as-a-service with real-time features and authentication
+### 📂 `.cursor/rules/data/` (4 files)
+Data fetching, state management, and databases
+- **`tanstack-query.mdc`** - TanStack Query v5: Suspense hooks, queryOptions
+- **`drizzle.mdc`** - Drizzle ORM 0.44+: Identity columns, $onUpdate, read replicas
+- **`supabase.mdc`** - Backend-as-a-service with real-time features
+- **`convex.mdc`** - Real-time backend with TypeScript
 
-### 🗄️ Database & ORM
-- **`drizzle.mdc`** - Type-safe SQL ORM with migrations and advanced queries
-
-### 🔐 Authentication
-- **`clerk.mdc`** - Complete authentication solution with organizations and webhooks
+### 📂 `.cursor/rules/auth/` (2 files)
+Authentication and user management
+- **`clerk.mdc`** - Complete authentication with organizations and webhooks
 - **`better-auth.mdc`** - Modern authentication with session management
 
-### 🚀 Backend & Automation
+### 📂 `.cursor/rules/deployment/` (7 files)
+Deployment platforms and hosting services
+- **`vercel.mdc`** - Vercel 2025: Rolling Releases, Fluid Compute, AI Gateway
+- **`netlify.mdc`** - Netlify platform deployment and edge functions
+- **`cloudflare.mdc`** - Cloudflare Pages and Workers
+- **`cloudflare-workers.mdc`** - Edge computing with KV, D1, R2
+- **`railway.mdc`** - Railway app deployment platform
+- **`fly-io.mdc`** - Fly.io global app deployment
+- **`neon.mdc`** - Neon serverless Postgres
+
+### 📂 `.cursor/rules/backend/` (6 files)
+Backend services, APIs, and automation
 - **`inngest.mdc`** - Event-driven functions and background jobs
-- **`trigger.mdc`** - Workflow automation and job processing
-- **`cloudflare-workers.mdc`** - Edge computing with KV, D1, and R2 storage
+- **`trigger.mdc`** - Trigger.dev v3: Workflow automation
+- **`triggerdev.mdc`** - Trigger.dev platform integration
+- **`tinybird.mdc`** - Real-time analytics with ClickHouse
+- **`stripe.mdc`** - Payment processing and subscriptions
+- **`qstash.mdc`** - Message queue and scheduling
 
-### 📊 Analytics & Data
-- **`tinybird.mdc`** - Real-time analytics with ClickHouse and API endpoints
+### 📂 `.cursor/rules/quality/` (5 files)
+Testing, security, performance, and accessibility
+- **`testing-strategy.mdc`** - Comprehensive testing (unit, integration, E2E)
+- **`security.mdc`** - Web application security and OWASP guidelines
+- **`performance.mdc`** - Performance optimization techniques
+- **`accessibility.mdc`** - Web accessibility (WCAG compliance)
+- **`seo.mdc`** - SEO optimization for Next.js
 
-### 💳 Payments & Commerce
-- **`stripe.mdc`** - Payment processing, subscriptions, webhooks, and marketplace features
+### 📂 `.cursor/rules/conventions/` (9 files)
+Code style, architecture, and best practices
+- **`api-design.mdc`** - RESTful API design standards
+- **`naming-conventions.mdc`** - Consistent naming patterns
+- **`import-ordering.mdc`** - Import statement organization
+- **`comment-style.mdc`** - Code documentation practices
+- **`error-messages.mdc`** - Clear, actionable error messages
+- **`async-error-handling.mdc`** - Async/await error handling
+- **`dependency-injection.mdc`** - DI patterns and IoC containers
+- **`project-structure.mdc`** - File organization patterns
+- **`environment-management.mdc`** - Environment configuration
 
-### 🛠️ Development Tools
-- **`mcps.mdc`** - Model Context Protocols for enhanced AI development
-
-### 🔧 Code Quality & Architecture
-- **`api-design.mdc`** - RESTful API design standards and best practices
-- **`testing-strategy.mdc`** - Comprehensive testing practices (unit, integration, E2E)
-- **`dependency-injection.mdc`** - DI patterns and IoC container usage
-- **`naming-conventions.mdc`** - Consistent naming for variables, functions, classes
-- **`import-ordering.mdc`** - Standards for organizing import statements
-- **`comment-style.mdc`** - Code commenting and documentation practices
-- **`error-messages.mdc`** - Guidelines for clear, actionable error messages
-- **`async-error-handling.mdc`** - Best practices for async/await error handling
-
-### 🛡️ Security & Performance
-- **`security.mdc`** - Web application security best practices and OWASP guidelines
-- **`performance.mdc`** - Performance optimization for fast, efficient applications
-
-### ♿ UX & Accessibility
-- **`accessibility.mdc`** - Web accessibility (a11y) best practices and WCAG compliance
-- **`seo.mdc`** - SEO optimization for Next.js applications
-
-### 🏗️ Project Organization
-- **`project-structure.mdc`** - File organization and project structure patterns
-- **`environment-management.mdc`** - Environment configuration and secrets management
+### 📂 `.cursor/rules/meta/` (4 files)
+Meta rules and development guidelines
+- **`_meta-guide.mdc`** - Guide for writing cursor rules
+- **`direct-tone.mdc`** - Communication style for AI responses
+- **`auto-commit.mdc`** - Git commit conventions
+- **`mcps.mdc`** - Model Context Protocols
 
 ## 🚀 Quick Start
 

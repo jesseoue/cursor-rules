@@ -1,8 +1,9 @@
 ---
-description:
-globs:
+description: TanStack Query v5 with Suspense hooks, queryOptions, and useMutationState
+globs: ["**/hooks/**/*.{ts,tsx}", "**/queries/**/*.{ts,tsx}", "**/mutations/**/*.{ts,tsx}"]
 alwaysApply: false
 ---
+
 # TanStack Query v5 Development Rules
 
 ## What's New in TanStack Query v5 (2025)

@@ -1,8 +1,7 @@
 ---
-description: 
-globs: 
+description: Clerk authentication with organizations, webhooks, and user management
+globs: ["**/middleware.{ts,tsx}", "**/app/**/*.{ts,tsx}", "**/lib/clerk*.{ts,tsx}"]
 alwaysApply: false
----
 ---
 rule_type: auto_attached
 title: Clerk Authentication Rules
