@@ -1,6 +1,6 @@
 # Comprehensive Cursor Rules for Modern Web Development (2025 Edition)
 
-A complete collection of **55+ production-ready cursor rules** organized into **10 logical categories** and updated with the **latest 2025 features** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
+A complete collection of **59+ production-ready cursor rules** organized into **10 logical categories** and updated with the **latest 2025 features** for building modern web applications. These rules are written in MDC format with proper metadata headers and auto-attachment patterns to enhance your development experience in Cursor.
 
 ## 🎯 Overview
 
@@ -34,11 +34,17 @@ This repository contains comprehensive cursor rules covering the complete modern
 - **Uploadthing**: Type-safe uploads, automatic optimizations, progress tracking
 - **Upstash Redis**: Serverless, edge-compatible, rate limiting with @upstash/ratelimit
 
+### Cloudflare Platform (New - 2025)
+- **D1 Database**: Global read replication, SQLite, time travel, session consistency
+- **R2 Storage**: S3-compatible, zero egress fees, automatic region selection
+- **Durable Objects**: Stateful serverless, SQLite storage (GA), WebSockets, free tier
+- **Workers AI**: 2-4× faster inference, Llama 4 Scout, batch API, 180+ cities
+
 ### Platform & Deployment
 - **Vercel 2025**: Rolling Releases, Fluid Compute, AI Gateway, 300ms global propagation
 - **Turborepo**: Remote caching, parallel execution, task pipelines, incremental builds
 
-## 📁 Organized Rule Structure (55+ Total)
+## 📁 Organized Rule Structure (59+ Total)
 
 All rules are now organized into **10 logical directories** for easy navigation:
 
@@ -61,13 +67,15 @@ Form handling and schema validation
 - **`zod-v4.mdc`** - Zod v4: 14x faster, @zod/mini, global registry, metadata
 - **`react-hook-form.mdc`** - Form handling with validation and optimization
 
-### 📂 `.cursor/rules/data/` (5 files)
+### 📂 `.cursor/rules/data/` (7 files)
 Data fetching, state management, and databases
 - **`tanstack-query.mdc`** - TanStack Query v5: Suspense hooks, queryOptions
 - **`drizzle.mdc`** - Drizzle ORM 0.44+: Identity columns, $onUpdate, read replicas
 - **`prisma.mdc`** - Prisma ORM 6.16+: Rust-free, omit API, multi-schema, 3.4× faster
 - **`supabase.mdc`** - Backend-as-a-service with real-time features
 - **`convex.mdc`** - Real-time backend with TypeScript
+- **`cloudflare-d1.mdc`** - Cloudflare D1: Serverless SQL with global read replication
+- **`cloudflare-r2.mdc`** - Cloudflare R2: S3-compatible storage with zero egress
 
 ### 📂 `.cursor/rules/auth/` (2 files)
 Authentication and user management
@@ -84,7 +92,7 @@ Deployment platforms and hosting services
 - **`fly-io.mdc`** - Fly.io global app deployment
 - **`neon.mdc`** - Neon serverless Postgres
 
-### 📂 `.cursor/rules/backend/` (10 files)
+### 📂 `.cursor/rules/backend/` (12 files)
 Backend services, APIs, and automation
 - **`inngest.mdc`** - Event-driven functions and background jobs
 - **`trigger.mdc`** - Trigger.dev v3: Workflow automation
@@ -96,6 +104,8 @@ Backend services, APIs, and automation
 - **`resend.mdc`** - Resend email API with React Email integration
 - **`uploadthing.mdc`** - UploadThing: Type-safe file uploads for Next.js
 - **`upstash-redis.mdc`** - Upstash Redis: Serverless, edge-compatible data store
+- **`cloudflare-durable-objects.mdc`** - Cloudflare Durable Objects: Stateful serverless with SQLite
+- **`cloudflare-workers-ai.mdc`** - Cloudflare Workers AI: GPU inference across 180+ cities
 
 ### 📂 `.cursor/rules/quality/` (7 files)
 Testing, security, performance, and accessibility
@@ -173,13 +183,14 @@ Most rules auto-attach based on file patterns:
 - Latest Next.js App Router patterns
 
 ### ✅ Comprehensive Coverage
-- 55+ specialized rules covering all aspects of development
+- 59+ specialized rules covering all aspects of development
 - Code quality and architecture guidelines
 - Security, performance, and accessibility standards
 - Testing strategies from unit to E2E with AI-powered tools
 - SEO optimization and project organization
 - API design and error handling standards
 - Modern ORMs, testing frameworks, and backend services
+- Complete Cloudflare platform (D1, R2, Durable Objects, Workers AI)
 
 ### ✅ Developer Experience
 - Enhanced autocomplete and intelligent suggestions
@@ -213,7 +224,7 @@ Includes a complete `package.json.template` with all necessary dependencies:
 
 ## 🌟 Why These Rules?
 
-1. **Comprehensive Coverage** - 55+ rules covering every aspect of modern web development
+1. **Comprehensive Coverage** - 59+ rules covering every aspect of modern web development
 2. **Production Tested** - Patterns used in real-world applications
 3. **Performance Focused** - Optimization best practices throughout
 4. **Developer Experience** - Enhanced autocomplete and intelligent suggestions
@@ -221,6 +232,7 @@ Includes a complete `package.json.template` with all necessary dependencies:
 6. **Quality Focused** - Code quality, testing, and architecture guidelines
 7. **AI-Powered Testing** - Latest Vitest 4.0 and Playwright with MCP integration
 8. **Modern ORMs** - Prisma 6.16+ and Drizzle with latest optimizations
+9. **Complete Cloudflare** - D1, R2, Durable Objects, and Workers AI with 2025 features
 
 ## 🔧 Writing Your Own Rules
 

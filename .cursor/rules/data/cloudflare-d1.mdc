@@ -1,0 +1,457 @@
+---
+description: Cloudflare D1 - Serverless SQL database with global read replication and SQLite semantics
+globs: ["**/d1/**/*.{ts,js}", "wrangler.toml", "**/migrations/**/*.sql", "**/schema.sql"]
+alwaysApply: false
+---
+
+# Cloudflare D1 Database Rules (2025)
+
+## What is Cloudflare D1
+
+D1 is Cloudflare's serverless SQL database built on SQLite, designed for horizontal scale-out with built-in disaster recovery, global read replication, and seamless Worker integration.
+
+### Key Features (2025)
+- **Global Read Replication (Beta)**: Automatically replicate data to 330+ locations for low latency
+- **Built on SQLite**: Full SQLite SQL semantics with advanced features
+- **Time Travel**: Roll back to any minute in the last 30 days
+- **Horizontal Scaling**: 10GB databases, thousands of databases at no extra cost
+- **Serverless Pricing**: Pay only for queries and storage, not capacity units
+- **Zero Egress**: No data transfer fees
+- **Session Consistency**: Sequential consistency for all queries in a session
+- **Built-in JSON**: JSON parsing, querying, and full-text search
+
+## Installation & Setup
+
+### Install Wrangler
+```bash
+npm install -g wrangler
+
+# Login to Cloudflare
+wrangler login
+
+# Create D1 database
+wrangler d1 create my-database
+
+# Output:
+# ✅ Successfully created DB 'my-database'
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "my-database"
+# database_id = "xxxxx-xxxxx-xxxxx-xxxxx-xxxxx"
+```
+
+### Configure wrangler.toml
+```toml
+name = "my-worker"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "my-database"
+database_id = "xxxxx-xxxxx-xxxxx-xxxxx-xxxxx"
+
+# Multiple databases
+[[d1_databases]]
+binding = "ANALYTICS_DB"
+database_name = "analytics"
+database_id = "yyyyy-yyyyy-yyyyy-yyyyy-yyyyy"
+```
+
+## Schema & Migrations
+
+### Create Migration
+```bash
+# Create migration file
+wrangler d1 migrations create my-database create_users_table
+
+# Creates: migrations/0001_create_users_table.sql
+```
+
+### Migration File
+```sql
+-- migrations/0001_create_users_table.sql
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  avatar_url TEXT,
+  created_at INTEGER DEFAULT (unixepoch()),
+  updated_at INTEGER DEFAULT (unixepoch())
+);
+
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_created_at ON users(created_at);
+
+-- Trigger for updated_at
+CREATE TRIGGER users_updated_at
+  AFTER UPDATE ON users
+  FOR EACH ROW
+BEGIN
+  UPDATE users SET updated_at = unixepoch() WHERE id = NEW.id;
+END;
+```
+
+### Apply Migrations
+```bash
+# Apply locally (for development)
+wrangler d1 migrations apply my-database --local
+
+# Apply to production
+wrangler d1 migrations apply my-database --remote
+```
+
+### JSON Schema Example
+```sql
+CREATE TABLE IF NOT EXISTS products (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  price REAL NOT NULL,
+  metadata JSON,
+  tags JSON,
+  created_at INTEGER DEFAULT (unixepoch())
+);
+
+-- Insert JSON data
+INSERT INTO products (name, price, metadata, tags)
+VALUES (
+  'T-Shirt',
+  29.99,
+  json('{"color": "blue", "size": "M", "material": "cotton"}'),
+  json('["clothing", "casual", "summer"]')
+);
+```
+
+## TypeScript Integration
+
+### Environment Interface
+```typescript
+export interface Env {
+  DB: D1Database
+  ANALYTICS_DB: D1Database
+}
+```
+
+### Basic Queries
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const { DB } = env
+
+    // SELECT query
+    const { results } = await DB.prepare(
+      'SELECT * FROM users WHERE email = ?'
+    )
+      .bind('user@example.com')
+      .all()
+
+    return Response.json(results)
+  },
+}
+```
+
+### CRUD Operations
+```typescript
+// CREATE
+async function createUser(db: D1Database, email: string, name: string) {
+  const result = await db
+    .prepare('INSERT INTO users (email, name) VALUES (?, ?) RETURNING *')
+    .bind(email, name)
+    .first()
+
+  return result
+}
+
+// READ
+async function getUser(db: D1Database, userId: number) {
+  const user = await db
+    .prepare('SELECT * FROM users WHERE id = ?')
+    .bind(userId)
+    .first()
+
+  return user
+}
+
+// UPDATE
+async function updateUser(db: D1Database, userId: number, name: string) {
+  const result = await db
+    .prepare('UPDATE users SET name = ? WHERE id = ? RETURNING *')
+    .bind(name, userId)
+    .first()
+
+  return result
+}
+
+// DELETE
+async function deleteUser(db: D1Database, userId: number) {
+  await db.prepare('DELETE FROM users WHERE id = ?').bind(userId).run()
+}
+```
+
+### Batch Operations
+```typescript
+// Batch inserts (more efficient)
+async function batchCreateUsers(
+  db: D1Database,
+  users: Array<{ email: string; name: string }>
+) {
+  const statements = users.map((user) =>
+    db.prepare('INSERT INTO users (email, name) VALUES (?, ?)').bind(user.email, user.name)
+  )
+
+  // Execute all statements in a single request
+  const results = await db.batch(statements)
+
+  return results
+}
+```
+
+### Transactions
+```typescript
+// Atomic transactions
+async function transferCredits(
+  db: D1Database,
+  fromUserId: number,
+  toUserId: number,
+  amount: number
+) {
+  const statements = [
+    db.prepare('UPDATE users SET credits = credits - ? WHERE id = ?').bind(amount, fromUserId),
+    db.prepare('UPDATE users SET credits = credits + ? WHERE id = ?').bind(amount, toUserId),
+    db
+      .prepare('INSERT INTO transactions (from_user_id, to_user_id, amount) VALUES (?, ?, ?)')
+      .bind(fromUserId, toUserId, amount),
+  ]
+
+  // All or nothing
+  const results = await db.batch(statements)
+
+  return results
+}
+```
+
+## Advanced Queries
+
+### JSON Queries
+```typescript
+// Query JSON fields
+async function getProductsByColor(db: D1Database, color: string) {
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM products
+       WHERE json_extract(metadata, '$.color') = ?`
+    )
+    .bind(color)
+    .all()
+
+  return results
+}
+
+// Query JSON arrays
+async function getProductsByTag(db: D1Database, tag: string) {
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM products
+       WHERE EXISTS (
+         SELECT 1 FROM json_each(tags)
+         WHERE value = ?
+       )`
+    )
+    .bind(tag)
+    .all()
+
+  return results
+}
+```
+
+### Full-Text Search
+```sql
+-- Create FTS table
+CREATE VIRTUAL TABLE posts_fts USING fts5(
+  title,
+  content,
+  content=posts,
+  content_rowid=id
+);
+
+-- Populate FTS table
+INSERT INTO posts_fts (rowid, title, content)
+SELECT id, title, content FROM posts;
+```
+
+```typescript
+// Full-text search
+async function searchPosts(db: D1Database, query: string) {
+  const { results } = await db
+    .prepare(
+      `SELECT posts.* FROM posts
+       JOIN posts_fts ON posts.id = posts_fts.rowid
+       WHERE posts_fts MATCH ?
+       ORDER BY rank`
+    )
+    .bind(query)
+    .all()
+
+  return results
+}
+```
+
+### Pagination
+```typescript
+async function getPaginatedUsers(db: D1Database, page: number, pageSize: number = 20) {
+  const offset = (page - 1) * pageSize
+
+  const { results } = await db
+    .prepare('SELECT * FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?')
+    .bind(pageSize, offset)
+    .all()
+
+  const { total } = (await db.prepare('SELECT COUNT(*) as total FROM users').first()) as {
+    total: number
+  }
+
+  return {
+    results,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+    total,
+  }
+}
+```
+
+## Read Replication (2025 - Beta)
+
+### Session-Based Consistency
+```typescript
+// Create session for sequential consistency
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const { DB } = env
+
+    // All queries in this session have sequential consistency
+    // Reads will route to nearest replica
+    const user = await DB.prepare('SELECT * FROM users WHERE id = ?').bind(123).first()
+
+    // Subsequent queries see previous writes
+    const posts = await DB.prepare('SELECT * FROM posts WHERE user_id = ?').bind(123).all()
+
+    return Response.json({ user, posts: posts.results })
+  },
+}
+```
+
+### Read from Replicas
+```typescript
+// Read operations automatically routed to nearest replica
+async function getAnalytics(db: D1Database, startDate: number, endDate: number) {
+  // This read query will be served from the nearest replica
+  const { results } = await db
+    .prepare(
+      `SELECT
+        date(created_at, 'unixepoch') as date,
+        COUNT(*) as count
+       FROM events
+       WHERE created_at BETWEEN ? AND ?
+       GROUP BY date`
+    )
+    .bind(startDate, endDate)
+    .all()
+
+  return results
+}
+```
+
+## Time Travel (Disaster Recovery)
+
+### Restore from Point in Time
+```bash
+# Restore database to specific point in time (last 30 days)
+wrangler d1 time-travel restore my-database --before="2025-10-15T10:30:00Z"
+
+# Create backup at specific point
+wrangler d1 time-travel export my-database --timestamp="2025-10-15T10:30:00Z" --output=backup.sql
+```
+
+## Development Workflow
+
+### Local Development
+```bash
+# Run worker with local D1
+wrangler dev --local --persist
+
+# Execute SQL locally
+wrangler d1 execute my-database --local --command="SELECT * FROM users"
+
+# Run migration locally
+wrangler d1 migrations apply my-database --local
+```
+
+### Query Database Directly
+```bash
+# Execute SQL command
+wrangler d1 execute my-database --command="SELECT COUNT(*) FROM users"
+
+# Execute SQL file
+wrangler d1 execute my-database --file=./queries/analytics.sql
+
+# Export data
+wrangler d1 export my-database --output=backup.sql
+```
+
+## Best Practices
+
+1. **Use Prepared Statements** - Always use parameterized queries to prevent SQL injection
+2. **Batch Operations** - Use `db.batch()` for multiple inserts/updates (10-100x faster)
+3. **Index Strategically** - Create indexes on frequently queried columns
+4. **Leverage JSON** - Use JSON columns for flexible schemas
+5. **Enable FTS** - Use full-text search for content-heavy applications
+6. **Pagination** - Always paginate large result sets (LIMIT + OFFSET)
+7. **Time Travel** - Regular exports for compliance and disaster recovery
+8. **Read Replicas** - Leverage global read replication for read-heavy workloads
+9. **Session Consistency** - Group related queries in the same request
+10. **Horizontal Scaling** - Use per-tenant databases for multi-tenant apps
+11. **Monitor Queries** - Use Wrangler analytics to track slow queries
+12. **Migrations** - Version control all schema changes
+13. **JSON Extract** - Use `json_extract()` for efficient JSON queries
+14. **Triggers** - Automate `updated_at` timestamps with triggers
+15. **Transactions** - Use batch operations for atomic multi-step operations
+
+## Error Handling
+
+```typescript
+async function safeQuery(db: D1Database, userId: number) {
+  try {
+    const user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first()
+
+    if (!user) {
+      return Response.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    return Response.json(user)
+  } catch (error) {
+    console.error('Database error:', error)
+
+    return Response.json(
+      {
+        error: 'Database query failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}
+```
+
+## Performance Tips
+
+1. **Connection Pooling**: Automatic in D1, no configuration needed
+2. **Query Optimization**: Use EXPLAIN QUERY PLAN to analyze queries
+3. **Batch Size**: Optimal batch size is 10-50 statements
+4. **Read Replicas**: Reduce latency by 2-10x for global users
+5. **Caching**: Combine with KV for frequently accessed data
+6. **Limit Results**: Always use LIMIT for large tables
+7. **Avoid SELECT ***: Query only needed columns
+8. **Use Indexes**: Index foreign keys and frequently queried columns
+9. **Analyze Tables**: Run ANALYZE after bulk inserts
+10. **Pragma Optimization**: SQLite pragmas are pre-optimized in D1

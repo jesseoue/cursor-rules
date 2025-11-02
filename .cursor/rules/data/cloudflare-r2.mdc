@@ -1,0 +1,595 @@
+---
+description: Cloudflare R2 - S3-compatible object storage with zero egress fees
+globs: ["wrangler.toml", "**/r2/**/*.{ts,js}", "**/storage/**/*.{ts,js}"]
+alwaysApply: false
+---
+
+# Cloudflare R2 Object Storage Rules (2025)
+
+## What is Cloudflare R2
+
+R2 is Cloudflare's S3-compatible object storage with zero egress fees, automatic region selection, and native Workers integration across 330+ locations.
+
+### Key Features
+- **Zero Egress Fees**: No charges for data transfer out
+- **S3 Compatible**: Full S3 API compatibility
+- **Auto Region Selection**: Optimized performance based on upload location
+- **Object Lifecycles**: Automated data management rules
+- **Workers Integration**: Direct access from Workers
+- **Super Slurper**: Easy migration from S3/GCS
+- **Public Buckets**: Serve static assets via R2.dev domain
+- **Presigned URLs**: Temporary access to private objects
+- **Multipart Uploads**: Efficient large file uploads
+
+## Installation & Setup
+
+### Create R2 Bucket
+```bash
+# Install Wrangler
+npm install -g wrangler
+
+# Create bucket
+wrangler r2 bucket create my-bucket
+
+# List buckets
+wrangler r2 bucket list
+
+# Delete bucket
+wrangler r2 bucket delete my-bucket
+```
+
+### Configure wrangler.toml
+```toml
+name = "my-worker"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[r2_buckets]]
+binding = "MY_BUCKET"
+bucket_name = "my-bucket"
+
+# Multiple buckets
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "user-images"
+
+[[r2_buckets]]
+binding = "VIDEOS"
+bucket_name = "user-videos"
+```
+
+## Basic Operations
+
+### TypeScript Environment
+```typescript
+export interface Env {
+  MY_BUCKET: R2Bucket
+  IMAGES: R2Bucket
+  VIDEOS: R2Bucket
+}
+```
+
+### Upload Object
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const { MY_BUCKET } = env
+
+    // Upload text
+    await MY_BUCKET.put('hello.txt', 'Hello, World!')
+
+    // Upload JSON
+    await MY_BUCKET.put('config.json', JSON.stringify({ version: '1.0' }), {
+      httpMetadata: {
+        contentType: 'application/json',
+      },
+    })
+
+    // Upload with custom metadata
+    await MY_BUCKET.put('document.pdf', pdfData, {
+      httpMetadata: {
+        contentType: 'application/pdf',
+        contentDisposition: 'attachment; filename="document.pdf"',
+        cacheControl: 'public, max-age=31536000',
+      },
+      customMetadata: {
+        uploadedBy: 'user123',
+        category: 'documents',
+      },
+    })
+
+    return new Response('Uploaded successfully')
+  },
+}
+```
+
+### Get Object
+```typescript
+async function getObject(bucket: R2Bucket, key: string): Promise<Response> {
+  const object = await bucket.get(key)
+
+  if (object === null) {
+    return new Response('Object not found', { status: 404 })
+  }
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+  headers.set('etag', object.httpEtag)
+
+  return new Response(object.body, { headers })
+}
+```
+
+### Delete Object
+```typescript
+async function deleteObject(bucket: R2Bucket, key: string) {
+  await bucket.delete(key)
+}
+
+// Delete multiple objects
+async function deleteMultiple(bucket: R2Bucket, keys: string[]) {
+  await bucket.delete(keys)
+}
+```
+
+### List Objects
+```typescript
+async function listObjects(bucket: R2Bucket, prefix?: string) {
+  const listed = await bucket.list({
+    prefix: prefix,
+    limit: 1000,
+  })
+
+  return listed.objects.map((obj) => ({
+    key: obj.key,
+    size: obj.size,
+    uploaded: obj.uploaded,
+    etag: obj.etag,
+  }))
+}
+
+// Paginated listing
+async function listAllObjects(bucket: R2Bucket) {
+  const objects: R2Object[] = []
+  let cursor: string | undefined
+
+  do {
+    const listed = await bucket.list({
+      cursor,
+      limit: 1000,
+    })
+
+    objects.push(...listed.objects)
+    cursor = listed.truncated ? listed.cursor : undefined
+  } while (cursor)
+
+  return objects
+}
+```
+
+## File Upload Handler
+
+### Handle FormData Upload
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    if (request.method !== 'POST') {
+      return new Response('Method not allowed', { status: 405 })
+    }
+
+    const formData = await request.formData()
+    const file = formData.get('file') as File
+
+    if (!file) {
+      return Response.json({ error: 'No file provided' }, { status: 400 })
+    }
+
+    // Generate unique key
+    const key = `uploads/${crypto.randomUUID()}/${file.name}`
+
+    // Upload to R2
+    await env.MY_BUCKET.put(key, file.stream(), {
+      httpMetadata: {
+        contentType: file.type,
+      },
+      customMetadata: {
+        originalName: file.name,
+        uploadedAt: new Date().toISOString(),
+      },
+    })
+
+    return Response.json({
+      success: true,
+      key,
+      size: file.size,
+      type: file.type,
+    })
+  },
+}
+```
+
+### Image Upload with Validation
+```typescript
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+
+async function uploadImage(bucket: R2Bucket, file: File, userId: string) {
+  // Validate file type
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    throw new Error('Invalid file type')
+  }
+
+  // Validate file size
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error('File too large')
+  }
+
+  const key = `images/${userId}/${crypto.randomUUID()}.${file.type.split('/')[1]}`
+
+  await bucket.put(key, file.stream(), {
+    httpMetadata: {
+      contentType: file.type,
+      cacheControl: 'public, max-age=31536000, immutable',
+    },
+    customMetadata: {
+      userId,
+      uploadedAt: new Date().toISOString(),
+      originalName: file.name,
+    },
+  })
+
+  return key
+}
+```
+
+## Multipart Uploads (Large Files)
+
+### Upload Large File
+```typescript
+async function uploadLargeFile(bucket: R2Bucket, file: File, key: string) {
+  const CHUNK_SIZE = 5 * 1024 * 1024 // 5MB chunks
+
+  // Start multipart upload
+  const multipartUpload = await bucket.createMultipartUpload(key, {
+    httpMetadata: {
+      contentType: file.type,
+    },
+  })
+
+  try {
+    const uploadedParts: R2UploadedPart[] = []
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE
+      const end = Math.min(start + CHUNK_SIZE, file.size)
+      const chunk = file.slice(start, end)
+
+      const uploadedPart = await multipartUpload.uploadPart(i + 1, chunk.stream())
+      uploadedParts.push(uploadedPart)
+    }
+
+    // Complete upload
+    const object = await multipartUpload.complete(uploadedParts)
+
+    return object
+  } catch (error) {
+    // Abort on error
+    await multipartUpload.abort()
+    throw error
+  }
+}
+```
+
+## Presigned URLs
+
+### Generate Presigned URL (via S3 API)
+```typescript
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+
+async function generatePresignedUploadUrl(
+  accountId: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+  key: string
+) {
+  const s3Client = new S3Client({
+    region: 'auto',
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  })
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  })
+
+  // URL valid for 1 hour
+  const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 })
+
+  return url
+}
+
+async function generatePresignedDownloadUrl(
+  accountId: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+  key: string
+) {
+  const s3Client = new S3Client({
+    region: 'auto',
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  })
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  })
+
+  const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 })
+
+  return url
+}
+```
+
+## Public Buckets
+
+### Configure Public Access
+```bash
+# Enable public access via R2.dev domain
+wrangler r2 bucket public-url allow my-bucket
+
+# Disable public access
+wrangler r2 bucket public-url deny my-bucket
+```
+
+### Serve Public Files
+```typescript
+// Files are accessible at:
+// https://pub-<bucket-id>.r2.dev/<key>
+
+// Example: Upload public image
+await env.MY_BUCKET.put('public/logo.png', logoData, {
+  httpMetadata: {
+    contentType: 'image/png',
+    cacheControl: 'public, max-age=31536000',
+  },
+})
+
+// Accessible at: https://pub-xxxxx.r2.dev/public/logo.png
+```
+
+## Custom Domain
+
+### Proxy Through Worker
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url)
+    const key = url.pathname.slice(1) // Remove leading slash
+
+    const object = await env.MY_BUCKET.get(key)
+
+    if (object === null) {
+      return new Response('Not found', { status: 404 })
+    }
+
+    const headers = new Headers()
+    object.writeHttpMetadata(headers)
+    headers.set('etag', object.httpEtag)
+
+    // Add custom headers
+    headers.set('Access-Control-Allow-Origin', '*')
+    headers.set('Cache-Control', 'public, max-age=31536000')
+
+    return new Response(object.body, { headers })
+  },
+}
+```
+
+## Object Lifecycles
+
+### Configure Lifecycle Rules
+```bash
+# Set lifecycle rules (via API or dashboard)
+# Example: Delete objects after 30 days
+```
+
+```typescript
+// Track expiration in custom metadata
+await bucket.put('temp/data.json', data, {
+  customMetadata: {
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+})
+```
+
+## Migration from S3
+
+### Use R2 Super Slurper
+```bash
+# Configure in Cloudflare Dashboard:
+# 1. Go to R2 > Your Bucket > Settings > Super Slurper
+# 2. Add S3 credentials and source bucket
+# 3. Start migration
+
+# Or use AWS CLI with R2 endpoint
+aws s3 sync s3://source-bucket r2://destination-bucket \
+  --endpoint-url https://<account-id>.r2.cloudflarestorage.com
+```
+
+## Advanced Patterns
+
+### Conditional Requests (ETags)
+```typescript
+async function conditionalGet(bucket: R2Bucket, key: string, ifNoneMatch?: string) {
+  const object = await bucket.get(key, {
+    onlyIf: {
+      etagDoesNotMatch: ifNoneMatch,
+    },
+  })
+
+  if (object === null) {
+    if (ifNoneMatch) {
+      // Object hasn't changed
+      return new Response(null, { status: 304 })
+    }
+    return new Response('Not found', { status: 404 })
+  }
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+  headers.set('etag', object.httpEtag)
+
+  return new Response(object.body, { headers })
+}
+```
+
+### Range Requests (Partial Content)
+```typescript
+async function rangeRequest(bucket: R2Bucket, key: string, range: string) {
+  // Parse range header: "bytes=0-1023"
+  const [start, end] = range
+    .replace('bytes=', '')
+    .split('-')
+    .map(Number)
+
+  const object = await bucket.get(key, {
+    range: { offset: start, length: end - start + 1 },
+  })
+
+  if (object === null) {
+    return new Response('Not found', { status: 404 })
+  }
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+  headers.set('content-range', `bytes ${start}-${end}/${object.size}`)
+
+  return new Response(object.body, {
+    status: 206,
+    headers,
+  })
+}
+```
+
+### Caching with KV
+```typescript
+async function getCachedObject(
+  bucket: R2Bucket,
+  kv: KVNamespace,
+  key: string
+): Promise<Response> {
+  // Check KV cache first (for small, frequently accessed files)
+  const cached = await kv.get(key, { type: 'stream' })
+
+  if (cached) {
+    return new Response(cached, {
+      headers: { 'X-Cache': 'HIT' },
+    })
+  }
+
+  // Fetch from R2
+  const object = await bucket.get(key)
+
+  if (object === null) {
+    return new Response('Not found', { status: 404 })
+  }
+
+  // Cache in KV (for objects < 25MB)
+  if (object.size < 25 * 1024 * 1024) {
+    const arrayBuffer = await object.arrayBuffer()
+    await kv.put(key, arrayBuffer, { expirationTtl: 3600 })
+  }
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+  headers.set('X-Cache', 'MISS')
+
+  return new Response(object.body, { headers })
+}
+```
+
+## Best Practices
+
+1. **Use Keys Wisely** - Organize with prefixes (e.g., `users/{userId}/avatar.jpg`)
+2. **Set Cache Headers** - Use `cache-control` for optimal CDN caching
+3. **Validate Uploads** - Check file type and size before uploading
+4. **Multipart for Large Files** - Use multipart uploads for files > 5MB
+5. **Generate Unique Keys** - Use UUIDs or timestamps to avoid collisions
+6. **Custom Metadata** - Store useful metadata (uploadedBy, category, etc.)
+7. **Presigned URLs** - Use for secure client-side uploads
+8. **Public Buckets** - Enable R2.dev domain for static assets
+9. **ETags** - Leverage ETags for conditional requests
+10. **Range Requests** - Support partial content for video/audio
+11. **Lifecycle Rules** - Automate deletion of temporary files
+12. **Monitor Usage** - Track storage and requests in Cloudflare dashboard
+13. **Proxy Through Workers** - Use custom domains and add CORS headers
+14. **S3 Compatibility** - Use existing S3 SDKs and tools
+15. **Zero Egress** - Serve files directly from R2 to save costs
+
+## Error Handling
+
+```typescript
+async function safeUpload(bucket: R2Bucket, key: string, data: ReadableStream) {
+  try {
+    await bucket.put(key, data)
+    return { success: true, key }
+  } catch (error) {
+    console.error('Upload failed:', error)
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
+async function safeGet(bucket: R2Bucket, key: string): Promise<Response> {
+  try {
+    const object = await bucket.get(key)
+
+    if (object === null) {
+      return Response.json({ error: 'Object not found' }, { status: 404 })
+    }
+
+    const headers = new Headers()
+    object.writeHttpMetadata(headers)
+
+    return new Response(object.body, { headers })
+  } catch (error) {
+    console.error('Get failed:', error)
+
+    return Response.json(
+      {
+        error: 'Failed to retrieve object',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}
+```
+
+## Performance Tips
+
+1. **Automatic Region Selection**: R2 automatically selects optimal storage location
+2. **Direct Workers Access**: 10x faster than S3 due to colocation
+3. **Cache Static Assets**: Use R2.dev domain with Cloudflare CDN
+4. **Batch Operations**: Delete multiple objects in a single request
+5. **Stream Large Files**: Use `ReadableStream` for memory efficiency
+6. **Conditional Requests**: Use ETags to avoid unnecessary transfers
+7. **Range Requests**: Support partial content for streaming media
+8. **Custom Metadata**: Store metadata in R2 instead of separate database
+9. **Public Buckets**: Serve static assets without Workers overhead
+10. **Zero Egress**: Save costs on data transfer compared to S3

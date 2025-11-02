@@ -1,0 +1,476 @@
+---
+description: Cloudflare Workers AI - Serverless GPU inference with 180+ cities, Llama 4, batch API, and LoRA support
+globs: ["**/ai/**/*.{ts,js}", "wrangler.toml"]
+alwaysApply: false
+---
+
+# Cloudflare Workers AI Rules (2025)
+
+## What is Workers AI
+
+Workers AI provides serverless GPU-powered inference across 180+ cities worldwide with 2-4× faster performance, batch processing, and support for 100+ AI models.
+
+### Latest Features (2025)
+- **2-4× Faster Inference**: Speculative decoding, prefix caching, updated Infire backend
+- **Llama 4 Scout 17B**: Multimodal Mixture of Experts model
+- **Batch Inference API**: Process large workloads efficiently
+- **Enhanced LoRA Support**: Up to rank 32, 300MB file limit, 8 new models
+- **New Partner Models**: Leonardo.Ai (image gen), Deepgram (TTS/STT)
+- **2× Faster Embeddings**: Updated BGE models with cls/mean pooling
+- **180+ Cities**: Global GPU availability for low latency
+- **100+ Models**: Text, image, audio, embedding, and multimodal models
+
+## Installation & Setup
+
+### Configure wrangler.toml
+```toml
+name = "my-ai-worker"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[ai]
+binding = "AI"
+```
+
+### TypeScript Environment
+```typescript
+import { Ai } from '@cloudflare/ai'
+
+export interface Env {
+  AI: Ai
+}
+```
+
+## Text Generation
+
+### Llama 4 Scout (Latest - 2025)
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const ai = new Ai(env.AI)
+
+    const response = await ai.run('@cf/meta/llama-4-scout-17b-instruct', {
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: 'Explain quantum computing in simple terms.' },
+      ],
+      max_tokens: 512,
+      temperature: 0.7,
+    })
+
+    return Response.json(response)
+  },
+}
+```
+
+### Llama 3.3 70B (2-4× Faster - 2025)
+```typescript
+async function generateText(ai: Ai, prompt: string) {
+  const response = await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 1024,
+    temperature: 0.8,
+    top_p: 0.9,
+  })
+
+  return response.response
+}
+```
+
+### Streaming Responses
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const ai = new Ai(env.AI)
+
+    const stream = await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+      messages: [{ role: 'user', content: 'Write a short story about AI.' }],
+      stream: true,
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    })
+  },
+}
+```
+
+### Conversation with Memory
+```typescript
+async function chat(ai: Ai, conversationHistory: Array<{ role: string; content: string }>) {
+  conversationHistory.push({
+    role: 'user',
+    content: 'What did we discuss earlier?',
+  })
+
+  const response = await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+    messages: conversationHistory,
+  })
+
+  conversationHistory.push({
+    role: 'assistant',
+    content: response.response,
+  })
+
+  return {
+    response: response.response,
+    history: conversationHistory,
+  }
+}
+```
+
+## Embeddings (2× Faster - 2025)
+
+### BGE Base (Updated Backend)
+```typescript
+async function generateEmbeddings(ai: Ai, texts: string[]) {
+  const embeddings = await ai.run('@cf/baai/bge-base-en-v1.5', {
+    text: texts,
+    pooling: 'cls', // or 'mean' (new parameter - 2025)
+  })
+
+  return embeddings.data
+}
+```
+
+### Semantic Search
+```typescript
+async function semanticSearch(ai: Ai, query: string, documents: string[]) {
+  // Generate query embedding
+  const queryEmbedding = await ai.run('@cf/baai/bge-base-en-v1.5', {
+    text: [query],
+  })
+
+  // Generate document embeddings
+  const docEmbeddings = await ai.run('@cf/baai/bge-base-en-v1.5', {
+    text: documents,
+  })
+
+  // Calculate cosine similarity
+  const scores = docEmbeddings.data.map((docEmbed: number[], idx: number) => ({
+    document: documents[idx],
+    score: cosineSimilarity(queryEmbedding.data[0], docEmbed),
+  }))
+
+  // Sort by relevance
+  return scores.sort((a, b) => b.score - a.score)
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0)
+  const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0))
+  const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0))
+  return dotProduct / (magnitudeA * magnitudeB)
+}
+```
+
+## Image Generation
+
+### Leonardo.Ai Models (New Partner - 2025)
+```typescript
+async function generateImage(ai: Ai, prompt: string) {
+  const response = await ai.run('@cf/leonardo-ai/phoenix-1.0', {
+    prompt: prompt,
+    num_steps: 20,
+    guidance: 7.5,
+    width: 1024,
+    height: 1024,
+  })
+
+  return response.image // Returns base64 image
+}
+```
+
+### Stable Diffusion XL
+```typescript
+async function generateSDXL(ai: Ai, prompt: string, negativePrompt?: string) {
+  const response = await ai.run('@cf/stabilityai/stable-diffusion-xl-base-1.0', {
+    prompt: prompt,
+    negative_prompt: negativePrompt,
+    num_inference_steps: 30,
+    guidance_scale: 7.5,
+  })
+
+  // Return image as Response
+  return new Response(response, {
+    headers: {
+      'Content-Type': 'image/png',
+    },
+  })
+}
+```
+
+## Speech & Audio
+
+### Deepgram TTS (New Partner - 2025)
+```typescript
+async function textToSpeech(ai: Ai, text: string) {
+  const response = await ai.run('@cf/deepgram/aura-helios-en', {
+    text: text,
+    voice: 'helios', // Professional male voice
+  })
+
+  return new Response(response, {
+    headers: {
+      'Content-Type': 'audio/mp3',
+    },
+  })
+}
+```
+
+### Deepgram STT (Speech-to-Text)
+```typescript
+async function speechToText(ai: Ai, audioData: ArrayBuffer) {
+  const response = await ai.run('@cf/deepgram/nova-2-general', {
+    audio: audioData,
+  })
+
+  return response.text
+}
+```
+
+### Whisper (Speech Recognition)
+```typescript
+async function transcribeAudio(ai: Ai, audioBlob: Blob) {
+  const response = await ai.run('@cf/openai/whisper', {
+    audio: await audioBlob.arrayBuffer(),
+  })
+
+  return response.text
+}
+```
+
+## Batch Inference API (New - 2025)
+
+### Batch Text Generation
+```typescript
+async function batchGenerate(ai: Ai, prompts: string[]) {
+  const batchRequests = prompts.map((prompt) => ({
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 256,
+  }))
+
+  // Process batch - fulfilled as fast as possible
+  const responses = await ai.runBatch('@cf/meta/llama-3.3-70b-instruct-fp8-fast', batchRequests)
+
+  return responses.map((r: any) => r.response)
+}
+```
+
+### Batch Embeddings
+```typescript
+async function batchEmbeddings(ai: Ai, texts: string[]) {
+  // Batch embedding generation for large datasets
+  const BATCH_SIZE = 100
+
+  const batches = []
+  for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+    batches.push(texts.slice(i, i + BATCH_SIZE))
+  }
+
+  const allEmbeddings = []
+  for (const batch of batches) {
+    const response = await ai.run('@cf/baai/bge-base-en-v1.5', {
+      text: batch,
+    })
+    allEmbeddings.push(...response.data)
+  }
+
+  return allEmbeddings
+}
+```
+
+## LoRA (Fine-Tuning) - Enhanced 2025
+
+### Use Custom LoRA
+```typescript
+// LoRA now supports:
+// - Rank up to 32 (previously 8)
+// - 300MB safetensors files (previously 100MB)
+// - 8 new models
+
+async function runWithLoRA(ai: Ai, prompt: string, loraId: string) {
+  const response = await ai.run(
+    '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    {
+      messages: [{ role: 'user', content: prompt }],
+      lora: loraId, // Your uploaded LoRA ID
+    }
+  )
+
+  return response.response
+}
+```
+
+## Multimodal (Llama 4 Scout)
+
+### Image + Text Input
+```typescript
+async function analyzeImage(ai: Ai, imageUrl: string, question: string) {
+  const response = await ai.run('@cf/meta/llama-4-scout-17b-instruct', {
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: question },
+          { type: 'image_url', image_url: { url: imageUrl } },
+        ],
+      },
+    ],
+  })
+
+  return response.response
+}
+```
+
+## RAG (Retrieval-Augmented Generation)
+
+### Complete RAG Pipeline
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const ai = new Ai(env.AI)
+    const { question } = await request.json()
+
+    // 1. Generate query embedding
+    const queryEmbedding = await ai.run('@cf/baai/bge-base-en-v1.5', {
+      text: [question],
+    })
+
+    // 2. Search vector database (e.g., Vectorize)
+    const relevant = await searchVectorDB(env.VECTORIZE, queryEmbedding.data[0])
+
+    // 3. Build context from relevant documents
+    const context = relevant.map((doc: any) => doc.text).join('\n\n')
+
+    // 4. Generate answer with context
+    const response = await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+      messages: [
+        {
+          role: 'system',
+          content: `Answer the question based on the following context:\n\n${context}`,
+        },
+        { role: 'user', content: question },
+      ],
+    })
+
+    return Response.json({
+      question,
+      answer: response.response,
+      sources: relevant,
+    })
+  },
+}
+
+async function searchVectorDB(vectorize: any, embedding: number[]) {
+  // Query Vectorize (Cloudflare's vector DB)
+  // Implementation depends on Vectorize API
+  return []
+}
+```
+
+## AI Gateway Integration
+
+### Route Through AI Gateway
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const ai = new Ai(env.AI, {
+      gateway: {
+        id: 'my-gateway',
+        skipCache: false,
+        cacheTtl: 3600,
+      },
+    })
+
+    const response = await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+      messages: [{ role: 'user', content: 'Hello!' }],
+    })
+
+    return Response.json(response)
+  },
+}
+```
+
+## Best Practices
+
+1. **Choose Right Model** - Balance speed, quality, and cost
+2. **Streaming for UX** - Use streaming for long-form generation
+3. **Batch When Possible** - Use batch API for large workloads (2025)
+4. **Cache Embeddings** - Store embeddings in D1 or KV
+5. **Use LoRA** - Fine-tune models for domain-specific tasks (rank 32)
+6. **Prompt Engineering** - Optimize prompts for better results
+7. **Error Handling** - Handle rate limits and timeouts
+8. **Monitor Usage** - Track costs in AI Gateway
+9. **Optimize Tokens** - Reduce max_tokens for faster responses
+10. **Leverage Geography** - 180+ cities for low latency
+11. **Multimodal** - Use Llama 4 Scout for image + text
+12. **Embeddings Pooling** - Choose cls or mean pooling (2025)
+13. **Partner Models** - Explore Leonardo.Ai and Deepgram
+14. **Temperature Control** - Lower for factual, higher for creative
+15. **System Prompts** - Set clear instructions in system messages
+
+## Available Models (2025)
+
+### Text Generation
+- `@cf/meta/llama-4-scout-17b-instruct` (Multimodal MoE - Latest)
+- `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (2-4× faster)
+- `@cf/meta/llama-3.1-8b-instruct`
+- `@cf/mistral/mistral-7b-instruct-v0.2`
+- `@cf/qwen/qwen1.5-14b-chat-awq`
+
+### Embeddings
+- `@cf/baai/bge-base-en-v1.5` (2× faster - 2025)
+- `@cf/baai/bge-large-en-v1.5`
+- `@cf/baai/bge-small-en-v1.5`
+
+### Image Generation
+- `@cf/leonardo-ai/phoenix-1.0` (New partner - 2025)
+- `@cf/stabilityai/stable-diffusion-xl-base-1.0`
+- `@cf/bytedance/stable-diffusion-xl-lightning`
+
+### Speech
+- `@cf/deepgram/aura-helios-en` (TTS - New 2025)
+- `@cf/deepgram/nova-2-general` (STT - New 2025)
+- `@cf/openai/whisper`
+
+### Translation
+- `@cf/meta/m2m100-1.2b`
+
+## Error Handling
+
+```typescript
+async function safeAICall(ai: Ai, prompt: string) {
+  try {
+    const response = await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+      messages: [{ role: 'user', content: prompt }],
+    })
+
+    return { success: true, data: response.response }
+  } catch (error) {
+    console.error('AI error:', error)
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+```
+
+## Performance Tips
+
+1. **2-4× Faster**: Llama 3.3 70B with speculative decoding
+2. **2× Faster Embeddings**: BGE models with updated backend
+3. **Batch Processing**: Use batch API for large workloads
+4. **Streaming**: Start sending tokens immediately
+5. **LoRA Rank**: Higher rank (up to 32) for better fine-tuning
+6. **Pooling Method**: Experiment with cls vs mean pooling
+7. **Cache Results**: Use AI Gateway caching
+8. **Global Distribution**: 180+ cities for low latency
+9. **Model Selection**: Smaller models for speed, larger for quality
+10. **Token Optimization**: Reduce max_tokens for faster responses
